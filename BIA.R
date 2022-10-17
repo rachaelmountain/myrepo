@@ -27,7 +27,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 -- https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 1800 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 -- https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
 
@@ -186,9 +186,19 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
                               cost_maint=copd_cost_yr)
 
     results <- cbind(base,diags,healthOC,case_detection,costs_subcs)
+    
+    
+    
+    # overall results
+    overall <- data.frame(n_agents=output$n_agents,
+                          n_COPD=output$n_COPD,
+                          n_diagnosed=output_ex$n_diagnosed_true_total,
+                          n_deaths=output$n_deaths,
+                          n_CD_eligible=output_ex$n_case_detection_eligible)
+    
 
 
-    return(results)
+    return(list(overall=overall,results=results))
 
   }
 
@@ -206,47 +216,47 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 # * S1: All patients ------------------------------------------------------
 
 s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
-saveRDS(s10,"s10_2.Rda")
+saveRDS(s10,"s10_3.Rda")
 s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
-saveRDS(s1a,"s1a_2.Rda")
+saveRDS(s1a,"s1a_3.Rda")
 s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
-saveRDS(s1b,"s1b_2.Rda")
+saveRDS(s1b,"s1b_3.Rda")
 s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
-saveRDS(s1c,"s1c_2.Rda")
+saveRDS(s1c,"s1c_3.Rda")
 
 
 # * S2: Symptomatic patients ----------------------------------------------
 
 #s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
 s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
-saveRDS(s2a,"s2a_2.Rda")
+saveRDS(s2a,"s2a_3.Rda")
 
 
 # * S3: Eversmokers + age >= 50 -------------------------------------------
 
 #s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
 s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
-saveRDS(s3a,"s3a_2.Rda")
+saveRDS(s3a,"s3a_3.Rda")
 s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
-saveRDS(s3b,"s3b_2.Rda")
+saveRDS(s3b,"s3b_3.Rda")
 s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
-saveRDS(s3c,"s3c_2.Rda")
+saveRDS(s3c,"s3c_3.Rda")
 s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
-saveRDS(s3d,"s3d_2.Rda")
+saveRDS(s3d,"s3d_3.Rda")
 
 
 
 
 
-s10 <- readRDS("s10_2.Rda")
-s1a <- readRDS("s1a_2.Rda")
-s1b <- readRDS("s1b_2.Rda")
-s1c <- readRDS("s1c_2.Rda")
-s2a <- readRDS("s2a_2.Rda")
-s3a <- readRDS("s3a_2.Rda")
-s3b <- readRDS("s3b_2.Rda")
-s3c <- readRDS("s3c_2.Rda")
-s3d <- readRDS("s3d_2.Rda")
+s10 <- readRDS("s10_3.Rda")
+s1a <- readRDS("s1a_3.Rda")
+s1b <- readRDS("s1b_3.Rda")
+s1c <- readRDS("s1c_3.Rda")
+s2a <- readRDS("s2a_3.Rda")
+s3a <- readRDS("s3a_3.Rda")
+s3b <- readRDS("s3b_3.Rda")
+s3c <- readRDS("s3c_3.Rda")
+s3d <- readRDS("s3d_3.Rda")
 
 
 
@@ -299,6 +309,33 @@ all_results_costs <- all_results %>%
   select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>%
   pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
   pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+
+
+
+
+
+# number eligible / tested / true positives / false positives
+overall <- all_results %>% 
+  filter(year>0) %>% 
+  group_by(scenario) %>% 
+  summarize(population=max(alive), # can come back to this
+            case_detection=sum(case_detection),
+            #eligible=sum(CD_eligible),
+            true_positive=sum(CD_pos),
+            false_positive=sum(CD_neg),
+            exacs=sum(exacs)) %>% 
+  ungroup() %>% 
+  mutate(case_detection_percent=case_detection/population*100, .after=case_detection) %>% 
+  #mutate(eligible_percent=eligible/population*100, .after=eligible) %>% 
+  mutate(true_positive_rate=true_positive/case_detection*100, .after=true_positive) %>% 
+  mutate(false_positive_rate=false_positive/case_detection*100, .after=false_positive)
+
+
+
+
+
+
+
 
 
 
@@ -375,60 +412,60 @@ all_results_ho_long <- all_results_ho %>%
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="count")
 p1 <- ggplot(all_results_ho_long %>% filter(ho_group=="copd_sev"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("Severe COPD") +
   geom_point() +
   geom_line() +
   theme_bw()
 p2 <- ggplot(all_results_ho_long %>% filter(ho_group=="diags_true"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("True COPD diagnoses") +
   geom_point() +
   geom_line() +
   theme_bw()
 p3 <- ggplot(all_results_ho_long %>% filter(ho_group=="diags_false"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("Overdiagnosis") +
   geom_point() +
   geom_line() +
   theme_bw()
 p4 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("Total exacerbations)") +
   geom_point() +
   geom_line() +
   theme_bw()
 p5 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs_mild"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("Mild exacerbations") +
   geom_point() +
   geom_line() +
   theme_bw()
 p6 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs_mod"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("Moderate exacerbations") +
   geom_point() +
   geom_line() +
   theme_bw()
 p7 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs_sev"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("Severe exacerbations") +
   geom_point() +
   geom_line() +
   theme_bw()
 p8 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs_vsev"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("very severe exacerbations") +
   geom_point() +
   geom_line() +
   theme_bw()
 p9 <- ggplot(all_results_ho_long %>% filter(ho_group=="deaths"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
+  ylab("Deaths") +
   geom_point() +
   geom_line() +
   theme_bw()
 grid.arrange(p2,p3,nrow=2)
-grid.arrange(p5,p6,p7,p8,nrow=2)
+grid.arrange(p5,p6,p7,p4,nrow=2)
 
 
 
@@ -529,3 +566,10 @@ p4 <- ggplot(all_results_costs_long_pp %>% filter(cost_group=="cost_maint_pp"),
   geom_line() +
   theme_bw()
 grid.arrange(p1,p2,p3,p4,nrow=2)
+
+
+
+
+
+
+
