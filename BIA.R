@@ -27,7 +27,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 1800 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 -- https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 -- https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
 
@@ -47,10 +47,10 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
 
 
-  # Functions ---------------------------------------------------------------
+# Functions ---------------------------------------------------------------
 
 
-  # * Simulation ------------------------------------------------------------
+  # * EPIC simulation ------------------------------------------------------------
 
   # CD_method : "None" "CDQ17" "CDQ195" "CDQ165" "FlowMeter" "FlowMeter_CDQ"
   # eligibility_criteria : "All patients" "Symptomatic" "Eversmokers"
@@ -156,8 +156,8 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
     # number of case detections
     case_detection <- data.frame(case_detection=rowSums(output_ex$n_case_detection_by_ctime),
-                                 CD_pos=output_ex$n_case_detection_by_ctime[,1],
-                                 CD_neg=output_ex$n_case_detection_by_ctime[,2])
+                                 CD_pos=output_ex$n_case_detection_by_ctime[,2],
+                                 CD_neg=output_ex$n_case_detection_by_ctime[,1])
 
     # costs
     costs <- output_ex$annual_cost_ctime
@@ -200,9 +200,100 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
     return(list(overall=overall,results=results))
 
+    }
   }
 
-}
+
+
+
+
+  # * BIA table - compare two scenarios -------------------------------------
+  
+  bia_table <- function(table,base_scenario,alt_scenario){
+    
+    base_table <- table %>%
+      filter(scenario==base_scenario) %>%
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint)
+    
+    alt_table <- table %>%
+      filter(scenario==alt_scenario) %>%
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint)
+    
+    bia_table <- data.frame(year=0:5,
+                            scenario=alt_scenario,
+                            criteria=alt_table$criteria[1],
+                            CD_method=alt_table$CD_method[1],
+                            bia_total=base_table$cost_total-alt_table$cost_total,
+                            bia_case_detection=base_table$cost_case_detection-alt_table$cost_case_detection,
+                            bia_treat=base_table$cost_treat-alt_table$cost_treat,
+                            bia_hosp=base_table$cost_hosp-alt_table$cost_hosp,
+                            bia_maint=base_table$cost_maint-alt_table$cost_maint)
+    
+    table <- bind_rows(
+      base_table %>%
+        pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+      ,
+      alt_table %>%
+        pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+      ,
+      bia_table %>%
+        pivot_longer(cols=bia_total:bia_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+    )
+    
+    return(table)
+    
+  }
+
+
+
+
+
+  # * BIA per COPD patient table - compare two scenarios --------------------
+  
+  bia_table_pp <- function(table,base_scenario,alt_scenario){
+    
+    base_table <- table %>%
+      filter(scenario==base_scenario) %>%
+      select(year,scenario,criteria,CD_method,cost_total_pp:cost_maint_pp)
+    
+    alt_table <- table %>%
+      filter(scenario==alt_scenario) %>%
+      select(year,scenario,criteria,CD_method,cost_total_pp:cost_maint_pp)
+    
+    bia_table <- data.frame(year=0:5,
+                            scenario=alt_scenario,
+                            criteria=alt_table$criteria[1],
+                            CD_method=alt_table$CD_method[1],
+                            bia_total_pp=base_table$cost_total_pp-alt_table$cost_total_pp,
+                            bia_case_detection_pp=base_table$cost_case_detection_pp-alt_table$cost_case_detection_pp,
+                            bia_treat_pp=base_table$cost_treat_pp-alt_table$cost_treat_pp,
+                            bia_hosp_pp=base_table$cost_hosp_pp-alt_table$cost_hosp_pp,
+                            bia_maint_pp=base_table$cost_maint_pp-alt_table$cost_maint_pp)
+    
+    table <- bind_rows(
+      base_table %>%
+        pivot_longer(cols=cost_total_pp:cost_maint_pp,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+      ,
+      alt_table %>%
+        pivot_longer(cols=cost_total_pp:cost_maint_pp,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+      ,
+      bia_table %>%
+        pivot_longer(cols=bia_total_pp:bia_maint_pp,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+    )
+    
+    return(table)
+    
+  }
+
+
+
+
 
 
 
@@ -211,42 +302,43 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 # Run simulations ---------------------------------------------------------
 
 
-
-
-# * S1: All patients ------------------------------------------------------
-
-s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
-saveRDS(s10,"s10_3.Rda")
-s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
-saveRDS(s1a,"s1a_3.Rda")
-s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
-saveRDS(s1b,"s1b_3.Rda")
-s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
-saveRDS(s1c,"s1c_3.Rda")
-
-
-# * S2: Symptomatic patients ----------------------------------------------
-
-#s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
-s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
-saveRDS(s2a,"s2a_3.Rda")
-
-
-# * S3: Eversmokers + age >= 50 -------------------------------------------
-
-#s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
-s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
-saveRDS(s3a,"s3a_3.Rda")
-s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
-saveRDS(s3b,"s3b_3.Rda")
-s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
-saveRDS(s3c,"s3c_3.Rda")
-s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
-saveRDS(s3d,"s3d_3.Rda")
-
+  # * S1: All patients ------------------------------------------------------
+  
+  s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
+  saveRDS(s10,"s10_3.Rda")
+  s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
+  saveRDS(s1a,"s1a_3.Rda")
+  s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
+  saveRDS(s1b,"s1b_3.Rda")
+  s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
+  saveRDS(s1c,"s1c_3.Rda")
+  
+  
+  # * S2: Symptomatic patients ----------------------------------------------
+  
+  #s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
+  s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
+  saveRDS(s2a,"s2a_3.Rda")
+  
+  
+  # * S3: Eversmokers + age >= 50 -------------------------------------------
+  
+  #s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
+  s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
+  saveRDS(s3a,"s3a_3.Rda")
+  s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
+  saveRDS(s3b,"s3b_3.Rda")
+  s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
+  saveRDS(s3c,"s3c_3.Rda")
+  s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
+  saveRDS(s3d,"s3d_3.Rda")
 
 
 
+
+
+
+# Read in data ------------------------------------------------------------
 
 s10 <- readRDS("s10_3.Rda")
 s1a <- readRDS("s1a_3.Rda")
@@ -263,27 +355,52 @@ s3d <- readRDS("s3d_3.Rda")
 
 
 
+
+
+
 # Results -----------------------------------------------------------------
 
+
+
+# * prepare data ----------------------------------------------------------
+
+# overall output
+s10o <- s10$overall %>% mutate(scenario="s10") %>% relocate(scenario)
+s1ao <- s1a$overall %>% mutate(scenario="s1a") %>% relocate(scenario)
+s1bo <- s1b$overall %>% mutate(scenario="s1b") %>% relocate(scenario)
+s1co <- s1c$overall %>% mutate(scenario="s1c") %>% relocate(scenario)
+s2ao <- s2a$overall %>% mutate(scenario="s2a") %>% relocate(scenario)
+s3ao <- s3a$overall %>% mutate(scenario="s3a") %>% relocate(scenario)
+s3bo <- s3b$overall %>% mutate(scenario="s3b") %>% relocate(scenario)
+s3co <- s3c$overall %>% mutate(scenario="s3c") %>% relocate(scenario)
+s3do <- s3d$overall %>% mutate(scenario="s3d") %>% relocate(scenario)
+
+all_overall <- bind_rows(s10o,s1ao,s1bo,s1co,s2ao,s3ao,s3bo,s3co,s3do) # combine
+
+
+
+# set baseline year and case detection years
 baseline_yr <- CD_start_year-1
 CD_yrs <- CD_start_year:(CD_start_year+4)
 
-s10 <- s10 %>% mutate(scenario="s10", .after=year)
-s1a <- s1a %>% mutate(scenario="s1a", .after=year)
-s1b <- s1b %>% mutate(scenario="s1b", .after=year)
-s1c <- s1c %>% mutate(scenario="s1c", .after=year)
+# year-by-year results
+s10 <- s10$results %>% mutate(scenario="s10", .after=year)
+s1a <- s1a$results %>% mutate(scenario="s1a", .after=year)
+s1b <- s1b$results %>% mutate(scenario="s1b", .after=year)
+s1c <- s1c$results %>% mutate(scenario="s1c", .after=year)
 
 #s20 <- s20 %>% mutate(scenario="s20", .after=year)
-s2a <- s2a %>% mutate(scenario="s2a", .after=year)
+s2a <- s2a$results %>% mutate(scenario="s2a", .after=year)
 
 #s30 <- s30 %>% mutate(scenario="s30", .after=year)
-s3a <- s3a %>% mutate(scenario="s3a", .after=year)
-s3b <- s3b %>% mutate(scenario="s3b", .after=year)
-s3c <- s3c %>% mutate(scenario="s3c", .after=year)
-s3d <- s3d %>% mutate(scenario="s3d", .after=year)
+s3a <- s3a$results %>% mutate(scenario="s3a", .after=year)
+s3b <- s3b$results %>% mutate(scenario="s3b", .after=year)
+s3c <- s3c$results %>% mutate(scenario="s3c", .after=year)
+s3d <- s3d$results %>% mutate(scenario="s3d", .after=year)
 
 
-all_results <- bind_rows(s10,s1a,s1b,s1c,s2a,s3a,s3b,s3c,s3d) %>% #
+# combine all year-by-year results
+all_results <- bind_rows(s10,s1a,s1b,s1c,s2a,s3a,s3b,s3c,s3d) %>% 
   filter(year %in% c(baseline_yr,CD_yrs)) %>% # remove unnecessary data
   mutate(year=year-baseline_yr) %>% # renumber so baseline year = 0 then 1:5 case detection years
   mutate(copd_prev=copd/alive*100, .after=copd) %>%
@@ -298,6 +415,14 @@ all_results <- bind_rows(s10,s1a,s1b,s1c,s2a,s3a,s3b,s3c,s3d) %>% #
 
 
 
+
+
+
+
+
+
+# * compare baseline years ------------------------------------------------
+
 baseline_compar_raw <- all_results %>%
   filter(year==0)
 
@@ -305,28 +430,26 @@ baseline_compar_percent <- baseline_compar_raw %>%
   mutate(across(alive:cost_maint_pp, function(x) (x - mean(x))/mean(x)*100))
 
 
-all_results_costs <- all_results %>%
-  select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>%
-  pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
-  pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
 
 
 
 
+# * overall results -------------------------------------------------------
 
 # number eligible / tested / true positives / false positives
+# this needs some work - hard to calculate percentages because n_agents is for whole time period not just CD years
 overall <- all_results %>% 
   filter(year>0) %>% 
   group_by(scenario) %>% 
-  summarize(population=max(alive), # can come back to this
-            case_detection=sum(case_detection),
-            #eligible=sum(CD_eligible),
+  summarize(case_detection=sum(case_detection),
             true_positive=sum(CD_pos),
             false_positive=sum(CD_neg),
             exacs=sum(exacs)) %>% 
   ungroup() %>% 
-  mutate(case_detection_percent=case_detection/population*100, .after=case_detection) %>% 
-  #mutate(eligible_percent=eligible/population*100, .after=eligible) %>% 
+  inner_join(all_overall, by="scenario") %>% 
+  mutate(case_detection_percent_of_pop=case_detection/n_agents*100, .after=case_detection) %>% 
+  mutate(case_detection_percent_of_eligible=case_detection/n_CD_eligible*100, .after=case_detection) %>%   
+  mutate(eligible_percent=n_CD_eligible/n_agents*100, .after=n_CD_eligible) %>% 
   mutate(true_positive_rate=true_positive/case_detection*100, .after=true_positive) %>% 
   mutate(false_positive_rate=false_positive/case_detection*100, .after=false_positive)
 
@@ -335,72 +458,200 @@ overall <- all_results %>%
 
 
 
+# * budget impact ---------------------------------------------------------
 
 
-
-
-bia_table <- function(table,base_scenario,alt_scenario){
-
-  base_table <- table %>%
-    filter(scenario==base_scenario) %>%
-    select(year,scenario,criteria,CD_method,cost_total:cost_maint)
-
-  alt_table <- table %>%
-    filter(scenario==alt_scenario) %>%
-    select(year,scenario,criteria,CD_method,cost_total:cost_maint)
-
-  bia_table <- data.frame(year=0:5,
-                          scenario=NA,
-                          criteria=NA,
-                          CD_method=NA,
-                          bia_total=base_table$cost_total-alt_table$cost_total,
-                          bia_case_detection=base_table$cost_case_detection-alt_table$cost_case_detection,
-                          bia_treat=base_table$cost_treat-alt_table$cost_treat,
-                          bia_hosp=base_table$cost_hosp-alt_table$cost_hosp,
-                          bia_maint=base_table$cost_maint-alt_table$cost_maint)
-
-  table <- bind_rows(
-    base_table %>%
-      pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
-      pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
-    ,
-    alt_table %>%
-      pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
-      pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
-    ,
-    bia_table %>%
-      pivot_longer(cols=bia_total:bia_maint,names_to="cost_group",values_to="CAD") %>%
-      pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
-  )
-
-}
-
+# run budget impact function
 bia_s10_s1a <- bia_table(all_results,"s10","s1a")
 bia_s10_s1b <- bia_table(all_results,"s10","s1b")
 bia_s10_s1c <- bia_table(all_results,"s10","s1c")
+bia_s10_s2a <- bia_table(all_results,"s10","s2a")
+bia_s10_s3a <- bia_table(all_results,"s10","s3a")
+bia_s10_s3b <- bia_table(all_results,"s10","s3b")
+bia_s10_s3c <- bia_table(all_results,"s10","s3c")
+bia_s10_s3d <- bia_table(all_results,"s10","s3d")
+
+
+bia_all_long <- bind_rows(bia_s10_s1a,
+                          bia_s10_s1b,
+                          bia_s10_s1c,
+                          bia_s10_s2a,
+                          bia_s10_s3a,
+                          bia_s10_s3b,
+                          bia_s10_s3c,
+                          bia_s10_s3d) %>% 
+  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
+  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
 
 
 
 
-all_results_costs_long <- all_results_costs %>%
-  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD")
-ggplot(all_results_costs_long %>% filter(cost_group=="cost_total"),
-       aes(x=year,y=CAD,group=scenario,col=scenario)) +
+
+# cost plots
+p1 <- ggplot(bia_all_long %>% filter(cost_group=="cost_total"),
+             aes(x=year,y=CAD,group=scenario,col=scenario)) +
+  ylab("Total cost (CAD)") + xlab("Year") +
   geom_point() +
   geom_line() +
   theme_bw()
-
-
-all_results_costs_long <- all_results_costs %>%
-  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD")
-ggplot(all_results_costs_long %>% filter(cost_group=="cost_case_detection"),
-       aes(x=year,y=CAD,group=scenario,col=scenario)) +
+p2 <- ggplot(bia_all_long %>% filter(cost_group=="cost_case_detection"),
+             aes(x=year,y=CAD,group=scenario,col=scenario)) +
+  ylab("Case detection cost (CAD)") + xlab("Year") +
   geom_point() +
   geom_line() +
   theme_bw()
+p3 <- ggplot(bia_all_long %>% filter(cost_group=="cost_treat"),
+             aes(x=year,y=CAD,group=scenario,col=scenario)) +
+  ylab("Medication cost (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p4 <- ggplot(bia_all_long %>% filter(cost_group=="cost_hosp"),
+             aes(x=year,y=CAD,group=scenario,col=scenario)) +
+  ylab("Hospitalization cost (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+grid.arrange(p1,p2,p3,p4,nrow=2)
 
 
 
+
+
+# bia plots
+p5 <- ggplot(bia_all_long %>% filter(cost_group=="bia_total" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1),group=scenario,col=scenario)) +
+  ylab("Total budget impact (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p6 <- ggplot(bia_all_long %>% filter(cost_group=="bia_case_detection" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1),group=scenario,col=scenario)) +
+  ylab("Case detection budget impact (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p7 <- ggplot(bia_all_long %>% filter(cost_group=="bia_treat" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1),group=scenario,col=scenario)) +
+  ylab("Medication budget impact (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p8 <- ggplot(bia_all_long %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1),group=scenario,col=scenario)) +
+  ylab("Hospitalization budget impact (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+grid.arrange(p5,p6,p7,p8,nrow=2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+# * budget impact per COPD patient ------------------------------------------
+
+
+# run budget impact function
+bia_pp_s10_s1a <- bia_table_pp(all_results,"s10","s1a")
+bia_pp_s10_s1b <- bia_table_pp(all_results,"s10","s1b")
+bia_pp_s10_s1c <- bia_table_pp(all_results,"s10","s1c")
+bia_pp_s10_s2a <- bia_table_pp(all_results,"s10","s2a")
+bia_pp_s10_s3a <- bia_table_pp(all_results,"s10","s3a")
+bia_pp_s10_s3b <- bia_table_pp(all_results,"s10","s3b")
+bia_pp_s10_s3c <- bia_table_pp(all_results,"s10","s3c")
+bia_pp_s10_s3d <- bia_table_pp(all_results,"s10","s3d")
+
+
+bia_pp_all_long <- bind_rows(bia_pp_s10_s1a,
+                          bia_pp_s10_s1b,
+                          bia_pp_s10_s1c,
+                          bia_pp_s10_s2a,
+                          bia_pp_s10_s3a,
+                          bia_pp_s10_s3b,
+                          bia_pp_s10_s3c,
+                          bia_pp_s10_s3d) %>% 
+  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
+  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
+
+
+
+
+
+# cost plots
+p1 <- ggplot(bia_pp_all_long %>% filter(cost_group=="cost_total_pp"),
+             aes(x=year,y=CAD,group=scenario,col=scenario)) +
+  ylab("Total cost per COPD patient (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p2 <- ggplot(bia_pp_all_long %>% filter(cost_group=="cost_case_detection_pp"),
+             aes(x=year,y=CAD,group=scenario,col=scenario)) +
+  ylab("Case detection cost per COPD patient (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p3 <- ggplot(bia_pp_all_long %>% filter(cost_group=="cost_treat_pp"),
+             aes(x=year,y=CAD,group=scenario,col=scenario)) +
+  ylab("Medication cost per COPD patient (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p4 <- ggplot(bia_pp_all_long %>% filter(cost_group=="cost_hosp_pp"),
+             aes(x=year,y=CAD,group=scenario,col=scenario)) +
+  ylab("Hospitalization cost per COPD patient (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+grid.arrange(p1,p2,p3,p4,nrow=2)
+
+
+
+
+
+# bia plots
+p5 <- ggplot(bia_pp_all_long %>% filter(cost_group=="bia_total_pp" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1),group=scenario,col=scenario)) +
+  ylab("Total budget impact (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p6 <- ggplot(bia_pp_all_long %>% filter(cost_group=="bia_case_detection_pp" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1),group=scenario,col=scenario)) +
+  ylab("Case detection budget impact (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p7 <- ggplot(bia_pp_all_long %>% filter(cost_group=="bia_treat_pp" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1),group=scenario,col=scenario)) +
+  ylab("Medication budget impact (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p8 <- ggplot(bia_pp_all_long %>% filter(cost_group=="bia_hosp_pp" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1),group=scenario,col=scenario)) +
+  ylab("Hospitalization budget impact (CAD)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+grid.arrange(p5,p6,p7,p8,nrow=2)
+
+
+
+
+
+
+
+
+# * health outcomes results -----------------------------------------------
 
 
 all_results_ho <- all_results %>%
@@ -409,7 +660,9 @@ all_results_ho <- all_results %>%
   pivot_wider(names_from=year,names_prefix="year_",values_from=count)
 
 all_results_ho_long <- all_results_ho %>%
-  pivot_longer(cols=year_0:year_5,names_to="year",values_to="count")
+  pivot_longer(cols=year_0:year_5,names_to="year",values_to="count") %>% 
+  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
+
 p1 <- ggplot(all_results_ho_long %>% filter(ho_group=="copd_sev"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
   ylab("Severe COPD") +
@@ -472,100 +725,6 @@ grid.arrange(p5,p6,p7,p4,nrow=2)
 
 
 
-
-
-# Per COPD patient results ------------------------------------------------
-
-all_results_costs_pp <- all_results %>%
-  select(year,scenario,criteria,CD_method,cost_total_pp:cost_maint_pp) %>%
-  pivot_longer(cols=cost_total_pp:cost_maint_pp,names_to="cost_group",values_to="CAD") %>%
-  pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
-
-
-
-bia_table_pp <- function(table,base_scenario,alt_scenario){
-
-  base_table <- table %>%
-    filter(scenario==base_scenario) %>%
-    select(year,scenario,criteria,CD_method,cost_total_pp:cost_maint_pp)
-
-  alt_table <- table %>%
-    filter(scenario==alt_scenario) %>%
-    select(year,scenario,criteria,CD_method,cost_total_pp:cost_maint_pp)
-
-  bia_table <- data.frame(year=0:5,
-                          scenario=NA,
-                          criteria=NA,
-                          CD_method=NA,
-                          bia_total_pp=base_table$cost_total_pp-alt_table$cost_total_pp,
-                          bia_case_detection_pp=base_table$cost_case_detection_pp-alt_table$cost_case_detection_pp,
-                          bia_treat_pp=base_table$cost_treat_pp-alt_table$cost_treat_pp,
-                          bia_hosp_pp=base_table$cost_hosp_pp-alt_table$cost_hosp_pp,
-                          bia_maint_pp=base_table$cost_maint_pp-alt_table$cost_maint_pp)
-
-  table <- bind_rows(
-    base_table %>%
-      pivot_longer(cols=cost_total_pp:cost_maint_pp,names_to="cost_group",values_to="CAD") %>%
-      pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
-    ,
-    alt_table %>%
-      pivot_longer(cols=cost_total_pp:cost_maint_pp,names_to="cost_group",values_to="CAD") %>%
-      pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
-    ,
-    bia_table %>%
-      pivot_longer(cols=bia_total_pp:bia_maint_pp,names_to="cost_group",values_to="CAD") %>%
-      pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
-  )
-
-  return(table)
-
-}
-
-bia_pp_s10_s1a <- bia_table_pp(all_results,"s10","s1a")
-bia_pp_s10_s1b <- bia_table_pp(all_results,"s10","s1b")
-bia_pp_s10_s1c <- bia_table_pp(all_results,"s10","s1c")
-
-
-
-
-all_results_costs_long_pp <- all_results_costs_pp %>%
-  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>%
-  mutate(year=factor(year)) %>%
-  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
-ggplot(all_results_costs_long_pp %>% filter(cost_group=="cost_total_pp"),
-       aes(x=year,y=CAD,group=scenario,col=scenario)) +
-  ylab("Total cost per COPD patient (CAD)") + xlab("Year") +
-  geom_point() +
-  geom_line() +
-  theme_bw()
-
-all_results_costs_long_pp <- all_results_costs_pp %>%
-  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD")
-p1 <- ggplot(all_results_costs_long_pp %>% filter(cost_group=="cost_case_detection_pp"),
-             aes(x=year,y=CAD,group=scenario,col=scenario)) +
-  ylab("Case detection cost (CAD)") +
-  geom_point() +
-  geom_line() +
-  theme_bw()
-p2 <- ggplot(all_results_costs_long_pp %>% filter(cost_group=="cost_treat_pp"),
-             aes(x=year,y=CAD,group=scenario,col=scenario)) +
-  ylab("Treatment cost (CAD)") +
-  geom_point() +
-  geom_line() +
-  theme_bw()
-p3 <- ggplot(all_results_costs_long_pp %>% filter(cost_group=="cost_hosp_pp"),
-             aes(x=year,y=CAD,group=scenario,col=scenario)) +
-  ylab("Hospitalisation cost (CAD)") +
-  geom_point() +
-  geom_line() +
-  theme_bw()
-p4 <- ggplot(all_results_costs_long_pp %>% filter(cost_group=="cost_maint_pp"),
-             aes(x=year,y=CAD,group=scenario,col=scenario)) +
-  ylab("Maintenance cost (CAD)") +
-  geom_point() +
-  geom_line() +
-  theme_bw()
-grid.arrange(p1,p2,p3,p4,nrow=2)
 
 
 
