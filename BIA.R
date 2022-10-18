@@ -480,6 +480,7 @@ bia_all_long <- bind_rows(bia_s10_s1a,
                           bia_s10_s3b,
                           bia_s10_s3c,
                           bia_s10_s3d) %>% 
+  distinct() %>% 
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
   mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
 
@@ -548,9 +549,21 @@ grid.arrange(p5,p6,p7,p8,nrow=2)
 
 
 
+# total cost and BI over time horizon
+bia_total <- bia_all_long %>% 
+  filter(year!="2021") %>% 
+  group_by(scenario,cost_group) %>% 
+  summarize(total_CAD=sum(CAD)) %>% 
+  pivot_wider(names_from=scenario,values_from=total_CAD) 
 
 
-
+cost_increase_percent <- bia_total %>% 
+  filter(cost_group=="bia_total") %>% 
+  select(-s10,-cost_group) %>% 
+  pivot_longer(cols=s1a:s3d,names_to="scenario",values_to="bia") %>% 
+  mutate(cost_increase=-bia/bia_total$s10[which(bia_total$cost_group=="cost_total")]*100) %>% 
+  mutate(percent_of_HC_budget=-bia/308000000000*100)
+  
 
 
 
@@ -572,13 +585,13 @@ bia_pp_s10_s3d <- bia_table_pp(all_results,"s10","s3d")
 
 
 bia_pp_all_long <- bind_rows(bia_pp_s10_s1a,
-                          bia_pp_s10_s1b,
-                          bia_pp_s10_s1c,
-                          bia_pp_s10_s2a,
-                          bia_pp_s10_s3a,
-                          bia_pp_s10_s3b,
-                          bia_pp_s10_s3c,
-                          bia_pp_s10_s3d) %>% 
+                             bia_pp_s10_s1b,
+                             bia_pp_s10_s1c,
+                             bia_pp_s10_s2a,
+                             bia_pp_s10_s3a,
+                             bia_pp_s10_s3b,
+                             bia_pp_s10_s3c,
+                             bia_pp_s10_s3d) %>% 
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
   mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
 
@@ -645,6 +658,13 @@ p8 <- ggplot(bia_pp_all_long %>% filter(cost_group=="bia_hosp_pp" & scenario!="s
 grid.arrange(p5,p6,p7,p8,nrow=2)
 
 
+
+# total cost and BI over time horizon
+bia_pp_total <- bia_pp_all_long %>% 
+  filter(year!="2021") %>% 
+  group_by(scenario,cost_group) %>% 
+  summarize(total_CAD=sum(CAD)) %>% 
+  pivot_wider(names_from=scenario,values_from=total_CAD)
 
 
 
@@ -719,6 +739,7 @@ p9 <- ggplot(all_results_ho_long %>% filter(ho_group=="deaths"),
   theme_bw()
 grid.arrange(p2,p3,nrow=2)
 grid.arrange(p5,p6,p7,p4,nrow=2)
+
 
 
 
