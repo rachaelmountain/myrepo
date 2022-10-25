@@ -27,7 +27,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 -- https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 1800 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 -- https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
 
@@ -41,8 +41,8 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
   p_case_detection <- c(0.1,0.2,0.3,0.4,0.5)
-  p_correct_overdiagnosis <- 0.5
-  price_yr <- 1.03761
+  p_correct_overdiagnosis <- 0.65 # did my own validation on this
+  price_yr <- 1.03761 # Jan 2022
 
 
 
@@ -57,7 +57,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
   BIA_simul <- function(CD_method, eligibility_criteria){
 
-    #CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
+    CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
 
     if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
       print("Unknown case detection method")
@@ -118,13 +118,8 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
     set.seed(123)
     run(input = input$values)
 
-    #inputs <- Cget_inputs()
     output <- Cget_output()
     output_ex <- Cget_output_ex()
-    # eventmat <- as.data.frame(Cget_all_events_matrix())
-    # eventmat <- eventmat %>%
-    #   mutate(ctime=local_time+time_at_creation,.after=local_time)
-
 
     terminate_session()
 
@@ -134,7 +129,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
                        criteria=eligibility_criteria,
                        CD_method=CD_method,
                        alive=rowSums(output_ex$n_alive_by_ctime_sex),
-                       sex=output_ex$n_alive_by_ctime_sex[,2],
+                       sex=output_ex$n_alive_by_ctime_sex[,2], # is this male or female???
                        smoke=output_ex$n_smoking_status_by_ctime[,2]
     )
 
@@ -156,8 +151,8 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
     # number of case detections
     case_detection <- data.frame(case_detection=rowSums(output_ex$n_case_detection_by_ctime),
-                                 CD_pos=output_ex$n_case_detection_by_ctime[,2],
-                                 CD_neg=output_ex$n_case_detection_by_ctime[,1])
+                                 CD_true_pos=output_ex$n_case_detection_by_ctime[,3],
+                                 CD_false_pos=output_ex$n_case_detection_by_ctime[,2])
 
     # costs
     costs <- output_ex$annual_cost_ctime
@@ -190,10 +185,8 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
     
     
     # overall results
-    overall <- data.frame(n_agents=output$n_agents,
-                          n_COPD=output$n_COPD,
-                          n_diagnosed=output_ex$n_diagnosed_true_total,
-                          n_deaths=output$n_deaths,
+    overall <- data.frame(n_agents=output_ex$n_agents_post_CD,
+                          n_diagnosed=output_ex$n_diagnosed_true_post_CD,
                           n_CD_eligible=output_ex$n_case_detection_eligible)
     
 
@@ -202,8 +195,6 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
     }
   }
-
-
 
 
 
