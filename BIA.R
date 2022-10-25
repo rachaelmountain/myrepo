@@ -36,7 +36,8 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
   # these input values all remain constant across case detection scenarios
   time_horizon <- 13
   yrs_btw_CD <- 20 # ensures no individual tested twice
-  CD_start_year <- 8 #2022
+  CD_start_cal_year <- 2022
+  CD_start_year <- CD_start_cal_year - 2015
   discount_rate <- 0 # the default
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
@@ -57,7 +58,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
   BIA_simul <- function(CD_method, eligibility_criteria){
 
-    CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
+    #CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
 
     if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
       print("Unknown case detection method")
@@ -88,14 +89,13 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
     }
 
     input$values$global_parameters$time_horizon <- time_horizon #time_horizon + (CD_start_year-2015) + 1
-    input$values$diagnosis$case_detection_start_yr <- CD_start_year
+    input$values$diagnosis$case_detection_start_yr <- CD_start_year-1
     input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
     input$values$global_parameters$discount_cost <- discount_rate
     input$values$medication$medication_adherence <- med_adherence
     input$values$smoking$smoking_cessation_adherence <- smoking_adherence
     if(CD_method!="None"){
-      #input$values$diagnosis$p_case_detection[(CD_start_year-2015+1):(CD_start_year-2015+time_horizon)] <- p_case_detection
-      input$values$diagnosis$p_case_detection[CD_start_year:(CD_start_year+4)] <- p_case_detection
+      input$values$diagnosis$p_case_detection[(CD_start_year+1):(CD_start_year+length(p_case_detection))] <- p_case_detection
     }
     input$values$diagnosis$p_correct_overdiagnosis <- p_correct_overdiagnosis
 
@@ -167,6 +167,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
     caseds <- output_ex$n_case_detection_by_ctime
     caseds_cost <- c(input$values$cost$cost_case_detection,
+                     input$values$cost$cost_case_detection+input$values$cost$cost_outpatient_diagnosis,
                      input$values$cost$cost_case_detection+input$values$cost$cost_outpatient_diagnosis)
     caseds_cost_yr <- rowSums(t(c(caseds_cost)*t(caseds)))
 
@@ -296,33 +297,33 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
   # * S1: All patients ------------------------------------------------------
   
   s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
-  saveRDS(s10,"s10_3.Rda")
+  #saveRDS(s10,"s10_3.Rda")
   s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
-  saveRDS(s1a,"s1a_3.Rda")
+  #saveRDS(s1a,"s1a_3.Rda")
   s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
-  saveRDS(s1b,"s1b_3.Rda")
+  #saveRDS(s1b,"s1b_3.Rda")
   s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
-  saveRDS(s1c,"s1c_3.Rda")
+  #saveRDS(s1c,"s1c_3.Rda")
   
   
   # * S2: Symptomatic patients ----------------------------------------------
   
   #s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
   s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
-  saveRDS(s2a,"s2a_3.Rda")
+  #saveRDS(s2a,"s2a_3.Rda")
   
   
   # * S3: Eversmokers + age >= 50 -------------------------------------------
   
   #s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
   s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
-  saveRDS(s3a,"s3a_3.Rda")
+  #saveRDS(s3a,"s3a_3.Rda")
   s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
-  saveRDS(s3b,"s3b_3.Rda")
+  #saveRDS(s3b,"s3b_3.Rda")
   s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
-  saveRDS(s3c,"s3c_3.Rda")
+  #saveRDS(s3c,"s3c_3.Rda")
   s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
-  saveRDS(s3d,"s3d_3.Rda")
+  #saveRDS(s3d,"s3d_3.Rda")
 
 
 
@@ -371,8 +372,8 @@ all_overall <- bind_rows(s10o,s1ao,s1bo,s1co,s2ao,s3ao,s3bo,s3co,s3do) # combine
 
 
 # set baseline year and case detection years
-baseline_yr <- CD_start_year-1
-CD_yrs <- CD_start_year:(CD_start_year+4)
+baseline_yr <- CD_start_year+1-1
+CD_yrs <- (CD_start_year+1):(CD_start_year+length(p_case_detection))
 
 # year-by-year results
 s10 <- s10$results %>% mutate(scenario="s10", .after=year)
@@ -421,26 +422,64 @@ baseline_compar_percent <- baseline_compar_raw %>%
   mutate(across(alive:cost_maint_pp, function(x) (x - mean(x))/mean(x)*100))
 
 
+baseline_avg <- baseline_compar_raw %>% 
+  group_by(year) %>% 
+  summarize(alive=mean(alive),
+            sex=mean(sex),
+            smoke=mean(smoke),
+            copd=mean(copd),
+            copd_prev=mean(copd_prev),
+            copd_sev=mean(copd_sev),
+            diags_true=mean(diags_true),
+            diags_true_prev=mean(diags_true_prev),
+            diags_false=mean(diags_false),
+            diags_false_prev=mean(diags_false_prev),
+            diags_total=mean(diags_total),
+            diags_total_prev=mean(diags_total_prev),
+            exacs=mean(exacs),
+            exacs_mild=mean(exacs_mild),
+            exacs_mod=mean(exacs_mod),
+            exacs_sev=mean(exacs_sev),
+            exacs_vsev=mean(exacs_vsev),
+            deaths=mean(deaths),
+            case_detection=0,
+            CD_true_pos=0,
+            CD_false_pos=0,
+            cost_total=mean(cost_total),
+            cost_case_detection=0,
+            cost_treat=mean(cost_treat),
+            cost_hosp=mean(cost_hosp),
+            cost_maint=mean(cost_maint),
+            cost_total_pp=mean(cost_total_pp),
+            cost_case_detection_pp=0,
+            cost_treat_pp=mean(cost_treat_pp),
+            cost_hosp_pp=mean(cost_hosp_pp),
+            cost_maint_pp=mean(cost_maint_pp)
+            )
 
+
+all_results[which(all_results$year==0),5:35] <- baseline_avg[-1]
+  
 
 
 
 # * overall results -------------------------------------------------------
 
 # number eligible / tested / true positives / false positives
-# this needs some work - hard to calculate percentages because n_agents is for whole time period not just CD years
-overall <- all_results %>% 
-  filter(year>0) %>% 
-  group_by(scenario) %>% 
-  summarize(case_detection=sum(case_detection),
-            true_positive=sum(CD_pos),
-            false_positive=sum(CD_neg),
-            exacs=sum(exacs)) %>% 
-  ungroup() %>% 
-  inner_join(all_overall, by="scenario") %>% 
-  mutate(case_detection_percent_of_pop=case_detection/n_agents*100, .after=case_detection) %>% 
-  mutate(case_detection_percent_of_eligible=case_detection/n_CD_eligible*100, .after=case_detection) %>%   
-  mutate(eligible_percent=n_CD_eligible/n_agents*100, .after=n_CD_eligible) %>% 
+overall <- all_overall %>% 
+  inner_join(
+    all_results %>% 
+      filter(year>0) %>% 
+      group_by(scenario) %>% 
+      summarize(case_detection=sum(case_detection),
+                true_positive=sum(CD_true_pos),
+                false_positive=sum(CD_false_pos),
+                exacs=sum(exacs)),
+    by="scenario"
+  ) %>% 
+  mutate(percent_pop_CD=case_detection/n_agents*100, .after=case_detection) %>% 
+  mutate(percent_eligible_CD=case_detection/n_CD_eligible*100, .after=percent_pop_CD) %>%   
+  mutate(percent_eligible=n_CD_eligible/n_agents*100, .after=n_CD_eligible) %>% 
   mutate(true_positive_rate=true_positive/case_detection*100, .after=true_positive) %>% 
   mutate(false_positive_rate=false_positive/case_detection*100, .after=false_positive)
 
