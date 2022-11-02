@@ -27,23 +27,23 @@ output:
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 --      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 18000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 --      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
 
 
   # * common input values ---------------------------------------------------
   # these input values all remain constant across case detection scenarios
-  time_horizon <- 13
-  yrs_btw_CD <- 20 # ensures no individual tested twice
+  time_horizon <- 13#18
+  yrs_btw_CD <- 100 # ensures no individual tested twice
   CD_start_cal_year <- 2022
   CD_start_year <- CD_start_cal_year - 2015 # default is 50 i.e. no case detection
   discount_rate <- 0 # the default
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
-  p_case_detection <- c(0.25,0.40,0.55,0.70,0.85)
+  p_case_detection <- c(0.1,0.2,0.3,0.4,0.5)#c(0.1,0.15,0.2,0.25,0.3,0.3,0.3,0.3,0.3,0.3)
   p_correct_overdiagnosis <- 0.65 # did my own validation on this
-  price_yr <- 1.03761 # Jan 2022
+  price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
 
 
 ```
@@ -58,7 +58,7 @@ output:
 
   BIA_simul <- function(CD_method, eligibility_criteria){
 
-    #CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
+    CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
 
     if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
       print("Unknown case detection method")
@@ -89,15 +89,15 @@ output:
     }
 
     input$values$global_parameters$time_horizon <- time_horizon #time_horizon + (CD_start_year-2015) + 1
-    if(CD_method!="None"){
+    #if(CD_method!="None"){
       input$values$diagnosis$case_detection_start_yr <- CD_start_year-1
-    }
+    #}
     input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
     input$values$global_parameters$discount_cost <- discount_rate
     input$values$medication$medication_adherence <- med_adherence
     input$values$smoking$smoking_cessation_adherence <- smoking_adherence
     if(CD_method!="None"){
-      input$values$diagnosis$p_case_detection[(CD_start_year+1):(CD_start_year+length(p_case_detection))] <- p_case_detection
+    input$values$diagnosis$p_case_detection[(CD_start_year+1):(CD_start_year+length(p_case_detection))] <- p_case_detection
     }
     input$values$diagnosis$p_correct_overdiagnosis <- p_correct_overdiagnosis
 
@@ -117,7 +117,7 @@ output:
     input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr
     input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr
 
-    set.seed(123)
+    set.seed(125)
     run(input = input$values)
 
     output <- Cget_output()
@@ -179,7 +179,8 @@ output:
                                 LAMA_LABA=medyrs[,2]-medyrs[,4],
                                 ICS_LAMA_LABA=medyrs[,4])
     meds_cost <- input$values$medication$medication_costs[c(2,5,7,15)]
-    meds_cost_yr <- rowSums(t(c(meds_cost)*t(medyrs_combos)))
+    meds_cost_yr <- rowSums(t(c(meds_cost)*t(medyrs_combos))) + 
+      output_ex$n_smoking_cessation_by_ctime*input$values$cost$cost_smoking_cessation
 
     costs_subcs <- data.frame(cost_total=costs,
                               cost_case_detection=caseds_cost_yr,
@@ -196,8 +197,8 @@ output:
                           n_diagnosed=output_ex$n_diagnosed_true_post_CD,
                           n_CD_eligible=output_ex$n_case_detection_eligible)
     
-
-
+    
+    
     return(list(overall=overall,results=results))
 
     }
@@ -217,7 +218,7 @@ output:
       filter(scenario==alt_scenario) %>%
       select(year,scenario,criteria,CD_method,cost_total:cost_maint)
     
-    bia_table <- data.frame(year=0:5,
+    bia_table <- data.frame(year=0:length(p_case_detection),
                             scenario=alt_scenario,
                             criteria=alt_table$criteria[1],
                             CD_method=alt_table$CD_method[1],
@@ -261,7 +262,7 @@ output:
       filter(scenario==alt_scenario) %>%
       select(year,scenario,criteria,CD_method,cost_total_pp:cost_maint_pp)
     
-    bia_table <- data.frame(year=0:5,
+    bia_table <- data.frame(year=0:length(p_case_detection),
                             scenario=alt_scenario,
                             criteria=alt_table$criteria[1],
                             CD_method=alt_table$CD_method[1],
@@ -299,33 +300,33 @@ output:
   # * S1: All patients ------------------------------------------------------
   
   s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
-  saveRDS(s10,"s10_4.Rda")
+  saveRDS(s10,"s10_3.Rda")
   s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
-  saveRDS(s1a,"s1a_4.Rda")
+  #saveRDS(s1a,"s1a_8.Rda")
   s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
-  saveRDS(s1b,"s1b_4.Rda")
+  #saveRDS(s1b,"s1b_8.Rda")
   s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
-  saveRDS(s1c,"s1c_4.Rda")
+  #saveRDS(s1c,"s1c_8.Rda")
   
   
   # * S2: Symptomatic patients ----------------------------------------------
   
   #s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
   s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
-  saveRDS(s2a,"s2a_4.Rda")
+  #saveRDS(s2a,"s2a_8.Rda")
   
   
   # * S3: Eversmokers + age >= 50 -------------------------------------------
   
   #s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
   s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
-  saveRDS(s3a,"s3a_4.Rda")
+  #saveRDS(s3a,"s3a_8.Rda")
   s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
-  saveRDS(s3b,"s3b_4.Rda")
+  #saveRDS(s3b,"s3b_8.Rda")
   s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
-  saveRDS(s3c,"s3c_4.Rda")
+  #saveRDS(s3c,"s3c_8.Rda")
   s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
-  saveRDS(s3d,"s3d_4.Rda")
+  #saveRDS(s3d,"s3d_8.Rda")
 
 
 ```
@@ -337,15 +338,15 @@ output:
 
 # Read in data ------------------------------------------------------------
   
-  s10 <- readRDS("s10_4.Rda")
-  s1a <- readRDS("s1a_4.Rda")
-  s1b <- readRDS("s1b_4.Rda")
-  s1c <- readRDS("s1c_4.Rda")
-  s2a <- readRDS("s2a_4.Rda")
-  s3a <- readRDS("s3a_4.Rda")
-  s3b <- readRDS("s3b_4.Rda")
-  s3c <- readRDS("s3c_4.Rda")
-  s3d <- readRDS("s3d_4.Rda")
+   s10 <- readRDS("s10_3.Rda")
+   s1a <- readRDS("s1a_3.Rda")
+   s1b <- readRDS("s1b_3.Rda")
+   s1c <- readRDS("s1c_3.Rda")
+   s2a <- readRDS("s2a_3.Rda")
+   s3a <- readRDS("s3a_3.Rda")
+   s3b <- readRDS("s3b_3.Rda")
+   s3c <- readRDS("s3c_3.Rda")
+   s3d <- readRDS("s3d_3.Rda")
   
 # * prepare data ----------------------------------------------------------
 
@@ -455,9 +456,9 @@ baseline_avg <- baseline_compar_raw %>%
   all_results[which(all_results$year==0),5:35] <- baseline_avg
 
 
-  kable(baseline_compar_raw)
-  kable(baseline_compar_percent)
-  kable(baseline_avg)
+baseline_compar_raw
+baseline_compar_percent
+baseline_avg
   
 
 ```
@@ -472,7 +473,7 @@ baseline_avg <- baseline_compar_raw %>%
 overall <- all_overall %>% 
   inner_join(
     all_results %>% 
-      filter(year>0) %>% 
+      #filter(year>0) %>% 
       group_by(scenario) %>% 
       summarize(case_detection=sum(case_detection),
                 true_positive=sum(CD_true_pos),
@@ -486,7 +487,7 @@ overall <- all_overall %>%
   mutate(true_positive_rate=true_positive/case_detection*100, .after=true_positive) %>% 
   mutate(false_positive_rate=false_positive/case_detection*100, .after=false_positive)
 
-kable(overall)
+overall
 
 
 ```
@@ -518,6 +519,10 @@ bia_all_long <- bind_rows(bia_s10_s1a,
   distinct() %>% 
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
   mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
+
+  # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
+  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>% 
+  # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031")))
 
 
 
@@ -607,9 +612,9 @@ cost_increase_percent <- bia_total %>%
 
 grid.arrange(p1,p2,p3,p4,nrow=2)
 grid.arrange(p5,p6,p7,p8,nrow=2)
-kable(bia_s10_s1a)
-kable(bia_total)
-kable(cost_increase_percent)
+bia_s10_s1a
+bia_total
+cost_increase_percent
 
 
 ```
@@ -645,6 +650,9 @@ bia_pp_all_long <- bind_rows(bia_pp_s10_s1a,
                              bia_pp_s10_s3c,
                              bia_pp_s10_s3d) %>% 
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
+  # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
+  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>% 
+  # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031")))
   mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
 
 
@@ -731,8 +739,8 @@ bia_pp_total <- bia_pp_all_long %>%
 
 grid.arrange(p1,p2,p3,p4,nrow=2)
 grid.arrange(p5,p6,p7,p8,nrow=2)
-kable(bia_pp_s10_s1a)
-kable(bia_pp_total)
+bia_pp_s10_s1a
+bia_pp_total
 
 
 
@@ -755,6 +763,9 @@ all_results_ho <- all_results %>%
 
 all_results_ho_long <- all_results_ho %>%
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="count") %>% 
+  # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
+  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>% 
+  # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031")))
   mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
 
 
