@@ -11,6 +11,7 @@ output: html_document
   library(dplyr)
   library(ggplot2)
   library(gridExtra)
+  library(ggpubr)
   library(knitr)
   library(kableExtra)
 
@@ -132,6 +133,50 @@ bia_table <- function(table,base_scenario,alt_scenario){
     
   }
 
+
+
+
+
+  ho_table <- function(table,base_scenario,alt_scenario){
+    
+    #table <- all_results ; base_scenario <- "s10" ; alt_scenario <- "s1a"
+    
+    base_table <- table %>%
+      filter(scenario==base_scenario) %>%
+      select(year,scenario,criteria,CD_method,exacs:exacs_vsev)
+    
+    alt_table <- table %>%
+      filter(scenario==alt_scenario) %>%
+      select(year,scenario,criteria,CD_method,exacs:exacs_vsev)
+    
+    bia_table <- data.frame(year=0:length(p_case_detection),
+                            scenario=alt_scenario,
+                            criteria=alt_table$criteria[1],
+                            CD_method=alt_table$CD_method[1],
+                            exacs_diff=base_table$exacs-alt_table$exacs,
+                            exacs_mild_diff=base_table$exacs_mild-alt_table$exacs_mild,
+                            exacs_mod_diff=base_table$exacs_mod-alt_table$exacs_mod,
+                            exacs_sev_diff=base_table$exacs_sev-alt_table$exacs_sev,
+                            exacs_vsev_diff=base_table$exacs_vsev-alt_table$exacs_vsev)
+    
+    table <- bind_rows(
+      base_table %>%
+        pivot_longer(cols=exacs:exacs_vsev,names_to="ho_group",values_to="count") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=count)
+      ,
+      alt_table %>%
+        pivot_longer(cols=exacs:exacs_vsev,names_to="ho_group",values_to="count") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=count)
+      ,
+      bia_table %>%
+        pivot_longer(cols=exacs_diff:exacs_vsev_diff,names_to="ho_group",values_to="count") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=count)
+    )
+    
+    return(table)
+    
+  }
+
 ```
 
 
@@ -140,7 +185,8 @@ bia_table <- function(table,base_scenario,alt_scenario){
 
 bia_all_results <- function(data){
   
-   # overall output
+  
+  # overall output
   s10o <- data$s10$overall %>% mutate(scenario="s10") %>% relocate(scenario)
   s1ao <- data$s1a$overall %>% mutate(scenario="s1a") %>% relocate(scenario)
   s1bo <- data$s1b$overall %>% mutate(scenario="s1b") %>% relocate(scenario)
@@ -228,7 +274,7 @@ bia_all_results <- function(data){
 
 
   # insert baseline average into data set
-  all_results[which(all_results$year==0),5:35] <- baseline_avg
+  all_results[which(all_results$year==0),5:36] <- baseline_avg
   
   
   overall <- all_overall %>% 
@@ -279,9 +325,38 @@ bia_all_results <- function(data){
     group_by(scenario,cost_group) %>% 
     summarize(total_CAD=sum(CAD)) %>% 
     pivot_wider(names_from=scenario,values_from=total_CAD) 
-
   
-  return(list(overall=overall,bia_total=bia_total))
+  
+  # all_results_ho <- all_results %>% 
+  #   filter(year!=0) %>% 
+  #   group_by(scenario) %>% 
+  #   summarize(exacs=sum(exacs),exacs_mild=sum(exacs_mild),exacs_mod=sum(exacs_mod),exacs_sev=sum(exacs_sev)+sum(exacs_vsev))
+  # all_results_ho <- all_results_ho %>% 
+  #   mutate(exacs_diff=)
+  
+  
+  ho_s10_s1a <- ho_table(all_results,"s10","s1a")
+  ho_s10_s1b <- ho_table(all_results,"s10","s1b")
+  ho_s10_s1c <- ho_table(all_results,"s10","s1c")
+  ho_s10_s2a <- ho_table(all_results,"s10","s2a")
+  ho_s10_s3a <- ho_table(all_results,"s10","s3a")
+  ho_s10_s3b <- ho_table(all_results,"s10","s3b")
+  ho_s10_s3c <- ho_table(all_results,"s10","s3c")
+  ho_s10_s3d <- ho_table(all_results,"s10","s3d")
+
+  ho_total <- bind_rows(ho_s10_s1a,
+                          ho_s10_s1b,
+                          ho_s10_s1c,
+                          ho_s10_s2a,
+                          ho_s10_s3a,
+                          ho_s10_s3b,
+                          ho_s10_s3c,
+                          ho_s10_s3d) %>% 
+    distinct()
+  
+  
+  
+  return(list(overall=overall,bia_total=bia_total,ho_total=ho_total))
   
 }
 
@@ -298,10 +373,22 @@ bia_all_results <- function(data){
 SA_base <- bia_all_results(data=readRDS("results_base.Rda"))
 
 
-SA_MA03 <- bia_all_results(data=readRDS("results_medad_03.Rda"))
+SA_MA03 <- bia_all_results(data=readRDS("results_MA03.Rda"))
 
 
-SA_noNRT <- bia_all_results(data=readRDS("results_noNTA.Rda"))
+SA_MA05 <- bia_all_results(data=readRDS("results_MA05.Rda"))
+
+
+SA_NRT <- bia_all_results(data=readRDS("results_NRT.Rda"))
+
+
+SA_CDUlow <- bia_all_results(data=readRDS("results_CDUlow.Rda"))
+
+
+SA_CDUmed <- bia_all_results(data=readRDS("results_CDUmed.Rda"))
+
+
+SA_CDUhigh <- bia_all_results(data=readRDS("results_CDUhigh.Rda"))
 
 
 
@@ -315,19 +402,89 @@ SA_noNRT <- bia_all_results(data=readRDS("results_noNTA.Rda"))
 
 bi_SA_base <- SA_base$bia_total %>% mutate(case="base", .before=cost_group)
 bi_SA_MA03 <- SA_MA03$bia_total %>% mutate(case="MA03", .before=cost_group)
-bi_SA_noNRT <- SA_noNRT$bia_total %>% mutate(case="noNRT", .before=cost_group)
+bi_SA_MA05 <- SA_MA05$bia_total %>% mutate(case="MA05", .before=cost_group)
+bi_SA_NRT <- SA_NRT$bia_total %>% mutate(case="NRT", .before=cost_group)
+bi_SA_CDUlow <- SA_CDUlow$bia_total %>% mutate(case="CDUlow", .before=cost_group)
+bi_SA_CDUmed <- SA_CDUmed$bia_total %>% mutate(case="CDUmed", .before=cost_group)
+bi_SA_CDUhigh <- SA_CDUhigh$bia_total %>% mutate(case="CDUhigh", .before=cost_group)
 
 
-bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_MA03, bi_SA_noNRT) %>% 
-  pivot_longer(cols=s10:s3d, names_to="scenario",values_to="CAD")
+bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA_CDUlow, bi_SA_CDUmed, bi_SA_CDUhigh) %>% 
+  pivot_longer(cols=s10:s3d, names_to="scenario",values_to="CAD") %>% 
+  mutate(case=factor(case,levels=c("CDUlow","CDUmed","CDUhigh","base","NRT","MA05","MA03")))
 
 
-ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
-       aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="s10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Total budget impact (million CADs)") +
   geom_point() +
   geom_line() +
   theme_bw()
+
+p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenario!="s10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Case detection budget impact (million CADs)") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="s10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Treatment budget impact (million CADs)") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Hospitalisation budget impact (million CADs)") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+
+
+
+p5 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_total"),
+             aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Total cost (million CADs)") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+p6 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_case_detection"),
+             aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Case detection cost (million CADs)") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+p7 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_treat"),
+             aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Treatment cost (million CADs)") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+p8 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_hosp"),
+             aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Hospitalisation cost (million CADs)") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+
+
+ggarrange(p1,p2,p3,p4,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
+ggarrange(p5,p6,p7,p8,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
 
 
 
@@ -344,4 +501,138 @@ ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="s10"),
 ```
 
 
+
+
+```{r health outcomes, echo=FALSE, message=FALSE}
+
+# exacerbations by severity
+sev_SA_combine <- bind_rows(
+  
+                            SA_base$ho_total %>% 
+                            mutate(case="base", .after=scenario) %>% 
+                            pivot_longer(cols=year_0:year_5, names_to="year", values_to="count") %>% 
+                            filter(year!="year_0") %>% 
+                            group_by(case, scenario, ho_group) %>% 
+                            summarize(count=sum(count)),
+                            
+                            SA_MA03$ho_total %>% 
+                            mutate(case="MA03", .after=scenario) %>% 
+                            pivot_longer(cols=year_0:year_5, names_to="year", values_to="count") %>% 
+                            filter(year!="year_0") %>% 
+                            group_by(case, scenario, ho_group) %>% 
+                            summarize(count=sum(count)),
+                            
+                            SA_MA05$ho_total %>% 
+                            mutate(case="MA05", .after=scenario) %>% 
+                            pivot_longer(cols=year_0:year_5, names_to="year", values_to="count") %>% 
+                            filter(year!="year_0") %>% 
+                            group_by(case, scenario, ho_group) %>% 
+                            summarize(count=sum(count)),
+                            
+                            SA_NRT$ho_total %>% 
+                            mutate(case="NRT", .after=scenario) %>% 
+                            pivot_longer(cols=year_0:year_5, names_to="year", values_to="count") %>% 
+                            filter(year!="year_0") %>% 
+                            group_by(case, scenario, ho_group) %>% 
+                            summarize(count=sum(count)),
+                            
+                            SA_CDUlow$ho_total %>% 
+                            mutate(case="CDUlow", .after=scenario) %>% 
+                            pivot_longer(cols=year_0:year_5, names_to="year", values_to="count") %>% 
+                            filter(year!="year_0") %>% 
+                            group_by(case, scenario, ho_group) %>% 
+                            summarize(count=sum(count)),
+                            
+                            SA_CDUmed$ho_total %>% 
+                            mutate(case="CDUmed", .after=scenario) %>% 
+                            pivot_longer(cols=year_0:year_5, names_to="year", values_to="count") %>% 
+                            filter(year!="year_0") %>% 
+                            group_by(case, scenario, ho_group) %>% 
+                            summarize(count=sum(count)),
+                            
+                            SA_CDUhigh$ho_total %>% 
+                            mutate(case="CDUhigh", .after=scenario) %>% 
+                            pivot_longer(cols=year_0:year_5, names_to="year", values_to="count") %>% 
+                            filter(year!="year_0") %>% 
+                            group_by(case, scenario, ho_group) %>% 
+                            summarize(count=sum(count)),
+                            
+                            
+                            
+                            ) %>% 
+  pivot_wider(names_from=ho_group,values_from=count) %>% 
+  mutate(case=factor(case,levels=c("CDUlow","CDUmed","CDUhigh","base","MA05","MA03","NRT")))
+
+
+
+p3 <- ggplot(sev_SA_combine %>% filter(scenario!="s10"),
+             aes(x=case, y=exacs_diff, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Exacerbations avoided") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p4 <- ggplot(sev_SA_combine %>% filter(scenario!="s10"),
+             aes(x=case, y=exacs_mild_diff, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Mild exacerbations avoided") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p5 <- ggplot(sev_SA_combine %>% filter(scenario!="s10"),
+             aes(x=case, y=exacs_mod_diff, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Moderate exacerbations avoided") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p6 <- ggplot(sev_SA_combine %>% filter(scenario!="s10"),
+             aes(x=case, y=exacs_sev_diff, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Severe exacerbations avoided") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+
+
+p7 <- ggplot(sev_SA_combine,
+             aes(x=case, y=exacs, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p8 <- ggplot(sev_SA_combine,
+             aes(x=case, y=exacs_mild, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Mild exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p9 <- ggplot(sev_SA_combine,
+             aes(x=case, y=exacs_mod, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Moderate exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p10 <- ggplot(sev_SA_combine,
+             aes(x=case, y=exacs_sev, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Severe exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+
+
+
+
+grid.arrange(p3,p4,p5,p6,nrow=2)
+grid.arrange(p7,p8,p9,p10,nrow=2)
+
+
+
+```
 
