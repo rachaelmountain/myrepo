@@ -27,21 +27,21 @@ output:
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 --      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
 
 
   # * common input values ---------------------------------------------------
   # these input values all remain constant across case detection scenarios
-  time_horizon <- 13#18
+  time_horizon <- 13 
   yrs_btw_CD <- 100 # ensures no individual tested twice
   CD_start_cal_year <- 2022
   CD_start_year <- CD_start_cal_year - 2015 # default is 50 i.e. no case detection
   discount_rate <- 0 # the default
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
-  p_case_detection <- c(0.1,0.2,0.3,0.4,0.5)#c(0.1,0.15,0.2,0.25,0.3,0.3,0.3,0.3,0.3,0.3)
+  p_case_detection <- c(0.1,0.2,0.3,0.4,0.5) #c(0.1,0.15,0.2,0.25,0.3,0.3,0.3,0.3,0.3,0.3)
   p_correct_overdiagnosis <- 0.65 # did my own validation on this
   price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
 
@@ -58,7 +58,7 @@ output:
 
   BIA_simul <- function(CD_method, eligibility_criteria){
 
-    CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
+    #CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
 
     if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
       print("Unknown case detection method")
@@ -89,7 +89,7 @@ output:
     }
 
     input$values$global_parameters$time_horizon <- time_horizon #time_horizon + (CD_start_year-2015) + 1
-    #if(CD_method!="None"){
+    #if(CD_method!="None"){ # can't have this line of code otherwise things like n_agents post CD not counted
       input$values$diagnosis$case_detection_start_yr <- CD_start_year-1
     #}
     input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
@@ -117,7 +117,7 @@ output:
     input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr
     input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr
 
-    set.seed(125)
+    set.seed(444)
     run(input = input$values)
 
     output <- Cget_output()
@@ -149,7 +149,8 @@ output:
                            exacs_mod=output_ex$n_exac_by_ctime_severity[,2],
                            exacs_sev=output_ex$n_exac_by_ctime_severity[,3],
                            exacs_vsev=output_ex$n_exac_by_ctime_severity[,4],
-                           deaths=rowSums(output_ex$n_exac_death_by_ctime_severity))
+                           deaths=rowSums(output_ex$n_exac_death_by_ctime_severity),
+                           NRT=output_ex$n_smoking_cessation_by_ctime)
 
     # number of case detections
     case_detection <- data.frame(case_detection=rowSums(output_ex$n_case_detection_by_ctime),
@@ -300,34 +301,30 @@ output:
   # * S1: All patients ------------------------------------------------------
   
   s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
-  saveRDS(s10,"s10_3.Rda")
   s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
-  #saveRDS(s1a,"s1a_8.Rda")
   s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
-  #saveRDS(s1b,"s1b_8.Rda")
   s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
-  #saveRDS(s1c,"s1c_8.Rda")
-  
+
   
   # * S2: Symptomatic patients ----------------------------------------------
   
   #s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
   s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
-  #saveRDS(s2a,"s2a_8.Rda")
-  
+
   
   # * S3: Eversmokers + age >= 50 -------------------------------------------
   
   #s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
   s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
-  #saveRDS(s3a,"s3a_8.Rda")
   s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
-  #saveRDS(s3b,"s3b_8.Rda")
   s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
-  #saveRDS(s3c,"s3c_8.Rda")
   s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
-  #saveRDS(s3d,"s3d_8.Rda")
 
+  
+  # save all results
+  all_s <- list(s10=s10,s1a=s1a,s1b=s1b,s1c=s1c,s2a=s2a,s3a=s3a,s3b=s3b,s3c=s3c,s3d=s3d)
+  saveRDS(all_s, "results_base.Rda")
+  
 
 ```
 
@@ -338,28 +335,20 @@ output:
 
 # Read in data ------------------------------------------------------------
   
-   s10 <- readRDS("s10_3.Rda")
-   s1a <- readRDS("s1a_3.Rda")
-   s1b <- readRDS("s1b_3.Rda")
-   s1c <- readRDS("s1c_3.Rda")
-   s2a <- readRDS("s2a_3.Rda")
-   s3a <- readRDS("s3a_3.Rda")
-   s3b <- readRDS("s3b_3.Rda")
-   s3c <- readRDS("s3c_3.Rda")
-   s3d <- readRDS("s3d_3.Rda")
+  alldat <- readRDS("results_base.Rda")
   
 # * prepare data ----------------------------------------------------------
 
   # overall output
-  s10o <- s10$overall %>% mutate(scenario="s10") %>% relocate(scenario)
-  s1ao <- s1a$overall %>% mutate(scenario="s1a") %>% relocate(scenario)
-  s1bo <- s1b$overall %>% mutate(scenario="s1b") %>% relocate(scenario)
-  s1co <- s1c$overall %>% mutate(scenario="s1c") %>% relocate(scenario)
-  s2ao <- s2a$overall %>% mutate(scenario="s2a") %>% relocate(scenario)
-  s3ao <- s3a$overall %>% mutate(scenario="s3a") %>% relocate(scenario)
-  s3bo <- s3b$overall %>% mutate(scenario="s3b") %>% relocate(scenario)
-  s3co <- s3c$overall %>% mutate(scenario="s3c") %>% relocate(scenario)
-  s3do <- s3d$overall %>% mutate(scenario="s3d") %>% relocate(scenario)
+  s10o <- alldat$s10$overall %>% mutate(scenario="s10") %>% relocate(scenario)
+  s1ao <- alldat$s1a$overall %>% mutate(scenario="s1a") %>% relocate(scenario)
+  s1bo <- alldat$s1b$overall %>% mutate(scenario="s1b") %>% relocate(scenario)
+  s1co <- alldat$s1c$overall %>% mutate(scenario="s1c") %>% relocate(scenario)
+  s2ao <- alldat$s2a$overall %>% mutate(scenario="s2a") %>% relocate(scenario)
+  s3ao <- alldat$s3a$overall %>% mutate(scenario="s3a") %>% relocate(scenario)
+  s3bo <- alldat$s3b$overall %>% mutate(scenario="s3b") %>% relocate(scenario)
+  s3co <- alldat$s3c$overall %>% mutate(scenario="s3c") %>% relocate(scenario)
+  s3do <- alldat$s3d$overall %>% mutate(scenario="s3d") %>% relocate(scenario)
   
   all_overall <- bind_rows(s10o,s1ao,s1bo,s1co,s2ao,s3ao,s3bo,s3co,s3do) # combine
   
@@ -370,19 +359,17 @@ output:
   CD_yrs <- (CD_start_year+1):(CD_start_year+length(p_case_detection))
   
   # year-by-year results
-  s10 <- s10$results %>% mutate(scenario="s10", .after=year)
-  s1a <- s1a$results %>% mutate(scenario="s1a", .after=year)
-  s1b <- s1b$results %>% mutate(scenario="s1b", .after=year)
-  s1c <- s1c$results %>% mutate(scenario="s1c", .after=year)
+  s10 <- alldat$s10$results %>% mutate(scenario="s10", .after=year)
+  s1a <- alldat$s1a$results %>% mutate(scenario="s1a", .after=year)
+  s1b <- alldat$s1b$results %>% mutate(scenario="s1b", .after=year)
+  s1c <- alldat$s1c$results %>% mutate(scenario="s1c", .after=year)
   
-  #s20 <- s20 %>% mutate(scenario="s20", .after=year)
-  s2a <- s2a$results %>% mutate(scenario="s2a", .after=year)
+  s2a <- alldat$s2a$results %>% mutate(scenario="s2a", .after=year)
   
-  #s30 <- s30 %>% mutate(scenario="s30", .after=year)
-  s3a <- s3a$results %>% mutate(scenario="s3a", .after=year)
-  s3b <- s3b$results %>% mutate(scenario="s3b", .after=year)
-  s3c <- s3c$results %>% mutate(scenario="s3c", .after=year)
-  s3d <- s3d$results %>% mutate(scenario="s3d", .after=year)
+  s3a <- alldat$s3a$results %>% mutate(scenario="s3a", .after=year)
+  s3b <- alldat$s3b$results %>% mutate(scenario="s3b", .after=year)
+  s3c <- alldat$s3c$results %>% mutate(scenario="s3c", .after=year)
+  s3d <- alldat$s3d$results %>% mutate(scenario="s3d", .after=year)
   
   
   # combine all year-by-year results
@@ -436,6 +423,7 @@ baseline_avg <- baseline_compar_raw %>%
             exacs_sev=mean(exacs_sev),
             exacs_vsev=mean(exacs_vsev),
             deaths=mean(deaths),
+            NRT=mean(NRT),
             case_detection=0,
             CD_true_pos=0,
             CD_false_pos=0,
@@ -453,7 +441,7 @@ baseline_avg <- baseline_compar_raw %>%
 
 
   # insert baseline average into data set
-  all_results[which(all_results$year==0),5:35] <- baseline_avg
+  all_results[which(all_results$year==0),5:36] <- baseline_avg
 
 
 baseline_compar_raw
@@ -519,9 +507,8 @@ bia_all_long <- bind_rows(bia_s10_s1a,
   distinct() %>% 
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
   mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
-
   # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
-  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>% 
+  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>%
   # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031")))
 
 
@@ -763,10 +750,10 @@ all_results_ho <- all_results %>%
 
 all_results_ho_long <- all_results_ho %>%
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="count") %>% 
-  # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
-  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>% 
-  # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031")))
   mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
+  # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
+  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>%
+  # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031")))
 
 
 
@@ -794,7 +781,7 @@ p3 <- ggplot(all_results_ho_long %>% filter(ho_group=="diags_false"),
 p4 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs"),
              aes(x=year,y=count,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
-  ylab("Total exacerbations)") +
+  ylab("Total exacerbations") +
   geom_point() +
   geom_line() +
   theme_bw()
@@ -837,6 +824,33 @@ p9 <- ggplot(all_results_ho_long %>% filter(ho_group=="deaths"),
 
 grid.arrange(p2,p3,nrow=2)
 grid.arrange(p5,p6,p7,p4,nrow=2)
+
+
+
+
+
+ggplot(all_results_ho_long %>% filter(ho_group=="exacs" & (scenario=="s10" | scenario=="s1a")),
+             aes(x=year,y=count,group=scenario,fill=scenario)) +
+  #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Total exacerbations") +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  theme_bw()
+
+
+all_results_ho_long %>%  filter(scenario=="s10" | scenario=="s1a") %>% 
+       filter(grepl('exac', ho_group)) %>% 
+       select(-criteria) %>% select(-CD_method) %>% 
+       pivot_wider(names_from=scenario, values_from=count) %>% 
+       mutate(diff=s10-s1a) %>% 
+       select(-s10) %>% select(-s1a) %>% 
+       pivot_wider(names_from=ho_group,values_from=diff) %>% 
+       filter(year!="2021")
+
+
+# total baseline exacs = 13,324,154
+# total s1a exacs = 13,114,074
+# difference = 210,080
+# percentage change = 1.6% decrease
 
 
 
