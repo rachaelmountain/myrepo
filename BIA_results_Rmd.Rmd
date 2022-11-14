@@ -36,7 +36,7 @@ output:
   # * common input values ---------------------------------------------------
   # these input values all remain constant across case detection scenarios
   time_horizon <- 13 
-  yrs_btw_CD <- 100 # ensures no individual tested twice
+  yrs_btw_CD <- 3 # ensures no individual tested twice
   CD_start_cal_year <- 2022
   CD_start_year <- CD_start_cal_year - 2015 # default is 50 i.e. no case detection
   discount_rate <- 0 # the default
@@ -324,7 +324,7 @@ output:
   
   # save all results
   all_s <- list(s10=s10,s1a=s1a,s1b=s1b,s1c=s1c,s2a=s2a,s3a=s3a,s3b=s3b,s3c=s3c,s3d=s3d)
-  saveRDS(all_s, "results_base.Rda")
+  saveRDS(all_s, "results_base_repeat3.Rda")
   
 
 ```
