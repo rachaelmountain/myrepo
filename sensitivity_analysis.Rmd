@@ -27,23 +27,33 @@ output: html_document
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 --      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
+  settings$random_number_agent_refill <- 1
 
+  
 
   # * common input values ---------------------------------------------------
   # these input values all remain constant across case detection scenarios
-  time_horizon <- 13#18
-  yrs_btw_CD <- 20 # ensures no individual tested twice
+  time_horizon <- 13 
+  yrs_btw_CD <- 5 # ensures no individual tested twice
   CD_start_cal_year <- 2022
   CD_start_year <- CD_start_cal_year - 2015 # default is 50 i.e. no case detection
   discount_rate <- 0 # the default
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
-  p_case_detection <- c(0.1,0.2,0.3,0.4,0.5)#c(0.1,0.15,0.2,0.25,0.3,0.3,0.3,0.3,0.3,0.3)
-  p_correct_overdiagnosis <- 0.65 # did my own validation on this
-  price_yr <- 1.03761 # Jan 2022
+  p_case_detection <- c(0.1,0.2,0.3,0.4,0.5) #c(0.1,0.15,0.2,0.25,0.3,0.3,0.3,0.3,0.3,0.3)
+  p_correct_overdiagnosis <- 0.67 # did my own validation on this
+  price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
+  
+  
+  
+  # set buffer sizes
+  settings$runif_buffer_size <- time_horizon*70 # ran for agents=100,000 & TH=13, max observed was 650
+  settings$rexp_buffer_size <- time_horizon*140 # ran for agents=100,000 & TH=13, max observed was 1,300
+  settings$rnorm_buffer_size <- time_horizon*8 + 10 # will equal 8*TH + 8, +2 for safety
+  settings$rgamma_buffer_size <- time_horizon + 2 # will equal TH+1 at max, +1 for safety
 
 
 ```
@@ -370,25 +380,25 @@ bia_all_results <- function(data){
 ```{r run function, echo=FALSE, message=FALSE}
 
 
-SA_base <- bia_all_results(data=readRDS("results_base.Rda"))
+SA_base <- bia_all_results(data=readRDS("results_base_5yrR_fixsim.Rda"))
 
 
-SA_MA03 <- bia_all_results(data=readRDS("results_MA03.Rda"))
+SA_MA03 <- bia_all_results(data=readRDS("results_MA03_5yrR_fixsim.Rda"))
 
 
-SA_MA05 <- bia_all_results(data=readRDS("results_MA05.Rda"))
+SA_MA05 <- bia_all_results(data=readRDS("results_MA05_5yrR_fixsim.Rda"))
 
 
-SA_NRT <- bia_all_results(data=readRDS("results_NRT.Rda"))
+SA_NRT <- bia_all_results(data=readRDS("results_NRT_5yrR_fixsim.Rda"))
 
 
-SA_CDUlow <- bia_all_results(data=readRDS("results_CDUlow.Rda"))
+SA_CDUlow <- bia_all_results(data=readRDS("results_CDUl_5yrR_fixsim.Rda"))
 
 
-SA_CDUmed <- bia_all_results(data=readRDS("results_CDUmed.Rda"))
+#SA_CDUmed <- bia_all_results(data=readRDS("results_CDUmed.Rda"))
 
 
-SA_CDUhigh <- bia_all_results(data=readRDS("results_CDUhigh.Rda"))
+SA_CDUhigh <- bia_all_results(data=readRDS("results_CDUh_5yrR_fixsim.Rda"))
 
 
 
@@ -405,45 +415,52 @@ bi_SA_MA03 <- SA_MA03$bia_total %>% mutate(case="MA03", .before=cost_group)
 bi_SA_MA05 <- SA_MA05$bia_total %>% mutate(case="MA05", .before=cost_group)
 bi_SA_NRT <- SA_NRT$bia_total %>% mutate(case="NRT", .before=cost_group)
 bi_SA_CDUlow <- SA_CDUlow$bia_total %>% mutate(case="CDUlow", .before=cost_group)
-bi_SA_CDUmed <- SA_CDUmed$bia_total %>% mutate(case="CDUmed", .before=cost_group)
+#bi_SA_CDUmed <- SA_CDUmed$bia_total %>% mutate(case="CDUmed", .before=cost_group)
 bi_SA_CDUhigh <- SA_CDUhigh$bia_total %>% mutate(case="CDUhigh", .before=cost_group)
 
 
-bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA_CDUlow, bi_SA_CDUmed, bi_SA_CDUhigh) %>% 
+bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA_CDUlow, bi_SA_CDUhigh) %>% 
   pivot_longer(cols=s10:s3d, names_to="scenario",values_to="CAD") %>% 
-  mutate(case=factor(case,levels=c("CDUlow","CDUmed","CDUhigh","base","NRT","MA05","MA03")))
+  mutate(case=factor(case,levels=c("CDUlow","CDUhigh","base","NRT","MA05","MA03"))) %>%  
+  mutate(case=fct_recode(case,"CDU low"="CDUlow","CDU high"="CDUhigh","Base"="base","No NRT"="NRT","50% MA"="MA05","30% MA"="MA03")) %>%  
+  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d"))
 
 
-p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="s10"),
+
+p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
-  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
-  ylab("Total budget impact (million CADs)") +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Additional total cost (million $)") + xlab("") +
   geom_point() +
   geom_line() +
+  geom_vline(xintercept="Base", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
-p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenario!="s10"),
+p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
-  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
-  ylab("Case detection budget impact (million CADs)") +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Additional case detection costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
+  geom_vline(xintercept="Base", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
-p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="s10"),
+p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
-  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
-  ylab("Treatment budget impact (million CADs)") +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Additional treatment costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
+  geom_vline(xintercept="Base", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
-p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
+p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
-  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
-  ylab("Hospitalisation budget impact (million CADs)") +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Additional hospitalisation costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
+  geom_vline(xintercept="Base", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
 
@@ -451,7 +468,7 @@ p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="s10")
 
 p5 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_total"),
              aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
-  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Total cost (million CADs)") +
   geom_point() +
   geom_line() +
@@ -459,7 +476,7 @@ p5 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_total"),
 
 p6 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_case_detection"),
              aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
-  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Case detection cost (million CADs)") +
   geom_point() +
   geom_line() +
@@ -467,7 +484,7 @@ p6 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_case_detection"),
 
 p7 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_treat"),
              aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
-  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Treatment cost (million CADs)") +
   geom_point() +
   geom_line() +
@@ -475,7 +492,7 @@ p7 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_treat"),
 
 p8 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_hosp"),
              aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
-  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Hospitalisation cost (million CADs)") +
   geom_point() +
   geom_line() +
@@ -488,7 +505,7 @@ ggarrange(p5,p6,p7,p8,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
 
 
 
-ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="s10"),
+ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
        aes(x=case, y=CAD/1000000, fill=scenario)) +
   ylab("Total budget impact (million CADs)") +
   geom_bar(stat="identity", position=position_dodge()) +

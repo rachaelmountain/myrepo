@@ -28,23 +28,33 @@ output:
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015     # 18162236 https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
+  settings$random_number_agent_refill <- 1
 
+  
 
   # * common input values ---------------------------------------------------
   # these input values all remain constant across case detection scenarios
-  time_horizon <- 13 
-  yrs_btw_CD <- 3 # ensures no individual tested twice
+  time_horizon <- 8 
+  yrs_btw_CD <- 5 # ensures no individual tested twice
   CD_start_cal_year <- 2022
   CD_start_year <- CD_start_cal_year - 2015 # default is 50 i.e. no case detection
   discount_rate <- 0 # the default
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
-  p_case_detection <- c(0.1,0.2,0.3,0.4,0.5) #c(0.1,0.15,0.2,0.25,0.3,0.3,0.3,0.3,0.3,0.3)
-  p_correct_overdiagnosis <- 0.65 # did my own validation on this
+  p_case_detection <- c(0.1,0.2,0.3,0.4,0.5) 
+  p_correct_overdiagnosis <- 0.67 # did my own validation on this
   price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
+  
+  
+  
+  # set buffer sizes
+  settings$runif_buffer_size <- time_horizon*70 # ran for agents=100,000 & TH=13, max observed was 650
+  settings$rexp_buffer_size <- time_horizon*140 # ran for agents=100,000 & TH=13, max observed was 1,300
+  settings$rnorm_buffer_size <- time_horizon*8 + 10 # will equal 8*TH + 8, +2 for safety
+  settings$rgamma_buffer_size <- time_horizon + 2 # will equal TH+1 at max, +1 for safety
 
 
 ```
@@ -91,7 +101,7 @@ output:
 
     input$values$global_parameters$time_horizon <- time_horizon #time_horizon + (CD_start_year-2015) + 1
     #if(CD_method!="None"){ # can't have this line of code otherwise things like n_agents post CD not counted
-      input$values$diagnosis$case_detection_start_yr <- CD_start_year-1
+      input$values$diagnosis$case_detection_start_yr <- CD_start_year
     #}
     input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
     input$values$global_parameters$discount_cost <- discount_rate
@@ -118,7 +128,7 @@ output:
     input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr
     input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr
 
-    set.seed(444)
+    set.seed(333)
     run(input = input$values)
 
     output <- Cget_output()
@@ -214,11 +224,13 @@ output:
     
     base_table <- table %>%
       filter(scenario==base_scenario) %>%
-      select(year,scenario,criteria,CD_method,cost_total:cost_maint)
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint)%>% 
+      mutate(cost_other=cost_total-cost_case_detection-cost_treat-cost_hosp-cost_maint)
     
     alt_table <- table %>%
       filter(scenario==alt_scenario) %>%
-      select(year,scenario,criteria,CD_method,cost_total:cost_maint)
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
+      mutate(cost_other=cost_total-cost_case_detection-cost_treat-cost_hosp-cost_maint)
     
     bia_table <- data.frame(year=0:length(p_case_detection),
                             scenario=alt_scenario,
@@ -228,19 +240,21 @@ output:
                             bia_case_detection=base_table$cost_case_detection-alt_table$cost_case_detection,
                             bia_treat=base_table$cost_treat-alt_table$cost_treat,
                             bia_hosp=base_table$cost_hosp-alt_table$cost_hosp,
-                            bia_maint=base_table$cost_maint-alt_table$cost_maint)
+                            bia_maint=base_table$cost_maint-alt_table$cost_maint,
+                            bia_other=base_table$cost_other-alt_table$cost_other)
+    
     
     table <- bind_rows(
       base_table %>%
-        pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=cost_total:cost_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
       ,
       alt_table %>%
-        pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=cost_total:cost_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
       ,
       bia_table %>%
-        pivot_longer(cols=bia_total:bia_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=bia_total:bia_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
     )
     
@@ -302,29 +316,48 @@ output:
   # * S1: All patients ------------------------------------------------------
   
   s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
+  saveRDS(s10,"s10.Rda")
   s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
+  saveRDS(s1a,"s1a.Rda")
   s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
+  saveRDS(s1b,"s1b.Rda")
   s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
+  saveRDS(s1c,"s1c.Rda")
 
   
   # * S2: Symptomatic patients ----------------------------------------------
   
   #s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
   s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
+  saveRDS(s2a,"s2a.Rda")
 
   
   # * S3: Eversmokers + age >= 50 -------------------------------------------
   
   #s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
   s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
+  saveRDS(s3a,"s3a.Rda")
   s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
+  saveRDS(s3b,"s3b.Rda")
   s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
+  saveRDS(s3c,"s3c.Rda")
   s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
+  saveRDS(s3d,"s3d.Rda")
+  
+  
+  s1c <- readRDS("s1c.Rda")
+  s2a <- readRDS("s2a.Rda")
+  s3a <- readRDS("s3a.Rda")
+  s3b <- readRDS("s3b.Rda")
+  s3c <- readRDS("s3c.Rda")
+  s3d <- readRDS("s3d.Rda")
+  
+  
 
   
   # save all results
   all_s <- list(s10=s10,s1a=s1a,s1b=s1b,s1c=s1c,s2a=s2a,s3a=s3a,s3b=s3b,s3c=s3c,s3d=s3d)
-  saveRDS(all_s, "results_base_repeat3.Rda")
+  saveRDS(all_s, "results_base333_5yrR_fixsim.Rda")
   
 
 ```
@@ -336,7 +369,8 @@ output:
 
 # Read in data ------------------------------------------------------------
   
-  alldat <- readRDS("results_base.Rda")
+  alldat <- readRDS("results_base_5yrR_fixsim.Rda")
+
   
 # * prepare data ----------------------------------------------------------
 
@@ -552,28 +586,28 @@ p4 <- ggplot(bia_all_long %>% filter(cost_group=="cost_hosp"),
 p5 <- ggplot(bia_all_long %>% filter(cost_group=="bia_total" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  ylab("Total budget impact (million $)") + xlab("Year") +
+  ylab("Additional total cost (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
   theme_bw()
 p6 <- ggplot(bia_all_long %>% filter(cost_group=="bia_case_detection" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  ylab("Case detection budget impact (million $)") + xlab("Year") +
+  ylab("Additional case detection costs (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
   theme_bw()
 p7 <- ggplot(bia_all_long %>% filter(cost_group=="bia_treat" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  ylab("Treatment budget impact (million $)") + xlab("Year") +
+  ylab("Additional treatment costs (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
   theme_bw()
 p8 <- ggplot(bia_all_long %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  ylab("Hospitalisation budget impact (million $)") + xlab("Year") +
+  ylab("Additional hospitalisation costs (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
   geom_hline(yintercept=0, linetype="dashed", color = "darkgrey") +
@@ -604,6 +638,23 @@ ggarrange(p5,p6,p7,p8,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
 bia_s10_s1a
 bia_total
 cost_increase_percent
+
+
+
+
+
+mean(c(abs(bia_total$S1a[7:12])[1]/sum(abs(bia_total$S1a[c(7,8,9,10,12)]))*100,
+abs(bia_total$S1b[7:12])[1]/sum(abs(bia_total$S1b[c(7,8,9,10,12)]))*100,
+abs(bia_total$S1c[7:12])[1]/sum(abs(bia_total$S1c[c(7,8,9,10,12)]))*100,
+abs(bia_total$S2a[7:12])[1]/sum(abs(bia_total$S2a[c(7,8,9,10,12)]))*100,
+abs(bia_total$S3a[7:12])[1]/sum(abs(bia_total$S3a[c(7,8,9,10,12)]))*100,
+abs(bia_total$S3b[7:12])[1]/sum(abs(bia_total$S3b[c(7,8,9,10,12)]))*100,
+abs(bia_total$S3c[7:12])[1]/sum(abs(bia_total$S3c[c(7,8,9,10,12)]))*100,
+abs(bia_total$S3d[7:12])[1]/sum(abs(bia_total$S3d[c(7,8,9,10,12)]))*100))
+
+
+
+
 
 
 ```

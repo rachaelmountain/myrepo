@@ -5,6 +5,8 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
                  repos = NULL,
                  type = "source")
 
+remotes::install_github('resplab/epicR')
+
 
 # Set-up ------------------------------------------------------------------
 
@@ -26,15 +28,16 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
                    record_mode_some_event=3)
 
   settings <- get_default_settings()
-  settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 1800 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 -- https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$record_mode <- record_mode["record_mode_agent"] # stores the events matrix, switch to "record_mode_none" for faster code
+  settings$n_base_agents <- 1000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015 -- https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
+  settings$random_number_agent_refill <- 1
 
 
   # * common input values ---------------------------------------------------
   # these input values all remain constant across case detection scenarios
-  time_horizon <- 13
+  time_horizon <- 14
   yrs_btw_CD <- 20 # ensures no individual tested twice
   CD_start_cal_year <- 2022
   CD_start_year <- CD_start_cal_year - 2015
@@ -44,6 +47,13 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
   p_case_detection <- c(0.1,0.2,0.3,0.4,0.5)
   p_correct_overdiagnosis <- 0.65 # did my own validation on this
   price_yr <- 1.03761 # Jan 2022
+  
+  
+  
+  settings$runif_buffer_size <- time_horizon*80
+  settings$rexp_buffer_size <- time_horizon*150
+  settings$rnorm_buffer_size <- time_horizon*20
+  settings$rgamma_buffer_size <- time_horizon + 1
 
 
 
@@ -58,7 +68,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
 
   BIA_simul <- function(CD_method, eligibility_criteria){
 
-    CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
+    CD_method <- "CDQ17" ; eligibility_criteria <- "All patients"
 
     if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
       print("Unknown case detection method")
@@ -89,7 +99,7 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
     }
 
     input$values$global_parameters$time_horizon <- time_horizon #time_horizon + (CD_start_year-2015) + 1
-    input$values$diagnosis$case_detection_start_yr <- CD_start_year-1
+    input$values$diagnosis$case_detection_start_yr <- CD_start_year
     input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
     input$values$global_parameters$discount_cost <- discount_rate
     input$values$medication$medication_adherence <- med_adherence
@@ -115,15 +125,48 @@ install.packages("C:/Users/rcm.stu/OneDrive - UBC/Documents/epicR",
     input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr
     input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr
 
-    set.seed(123)
+    #set.seed(444)
     run(input = input$values)
-
+    
+    ag <- Cget_agent_events(1)[,121:130]
+    for(i in 1:(settings$n_base_agents)){
+      ag <- rbind(ag,Cget_agent_events(i+1)[,121:130])
+    }
+    
+    
+    max(ag$norm_count.1)
+    
+    max(ag$unif_count.1)
+    
+    max(ag$exp_count.1)
+    
+    max(ag$gamma_COPD_count.1[which(ag$gamma_COPD_count.1<50000)])
+    
+    max(ag$gamma_NCOPD_count.1[which(ag$gamma_NCOPD_count.1<50000)])
+    
+    
+    
+    # > summary(ag$norm_count.1)
+    # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    # 7.00   31.00   31.00   29.27   32.00   34.00 
+    # > summary(ag$unif_count.1)
+    # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    # 12.00   71.00   75.00   70.05   77.00  638.00 
+    # > summary(ag$exp_count.1)
+    # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    # 3.0   101.0   113.0   110.8   126.0  1329.0 
+    
+    
     output <- Cget_output()
     output_ex <- Cget_output_ex()
 
     terminate_session()
 
-
+    
+    
+    
+    
+    
     # number alive
     base <- data.frame(year=1:(time_horizon),
                        criteria=eligibility_criteria,
