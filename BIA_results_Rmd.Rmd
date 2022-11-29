@@ -44,7 +44,7 @@ output:
   CD_end_cal_year <- 2026
   CD_end_year <- CD_end_cal_year - 2015 # default is 50 i.e. no case detection
   discount_rate <- 0 # the default
-  med_adherence <- 0.5 # the default, adjust for sensitivity analysis
+  med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
   p_case_detection <- c(0.05,0.1,0.15,0.2,0.25) 
   p_correct_overdiagnosis <- 0.67 # did my own validation on this
@@ -226,11 +226,13 @@ output:
     
     base_table <- table %>%
       filter(scenario==base_scenario) %>%
-      select(year,scenario,criteria,CD_method,cost_total:cost_maint)
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
+      mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
     
     alt_table <- table %>%
       filter(scenario==alt_scenario) %>%
-      select(year,scenario,criteria,CD_method,cost_total:cost_maint)
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
+      mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
     
     bia_table <- data.frame(year=0:length(p_case_detection),
                             scenario=alt_scenario,
@@ -240,19 +242,20 @@ output:
                             bia_case_detection=base_table$cost_case_detection-alt_table$cost_case_detection,
                             bia_treat=base_table$cost_treat-alt_table$cost_treat,
                             bia_hosp=base_table$cost_hosp-alt_table$cost_hosp,
-                            bia_maint=base_table$cost_maint-alt_table$cost_maint)
+                            bia_maint=base_table$cost_maint-alt_table$cost_maint,
+                            bia_other=base_table$cost_other-alt_table$cost_other)
     
     table <- bind_rows(
       base_table %>%
-        pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=cost_total:cost_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
       ,
       alt_table %>%
-        pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=cost_total:cost_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
       ,
       bia_table %>%
-        pivot_longer(cols=bia_total:bia_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=bia_total:bia_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
     )
     
@@ -345,7 +348,7 @@ output:
   
   # save all results
   all_s <- list(s10=s10,s1a=s1a,s1b=s1b,s1c=s1c,s2a=s2a,s3a=s3a,s3b=s3b,s3c=s3c,s3d=s3d)
-  saveRDS(all_s, "results_MA03_5yrR_fixsim.Rda")
+  saveRDS(all_s, "results_base_fixsim.Rda")
   
 
 ```
@@ -357,7 +360,7 @@ output:
 
 # Read in data ------------------------------------------------------------
   
-  alldat <- readRDS("results_base_5yrR_fixsim.Rda")
+  alldat <- readRDS("results_base_fixsim.Rda")
 
   
 # * prepare data ----------------------------------------------------------
@@ -622,10 +625,26 @@ cost_increase_percent <- bia_total %>%
 
 
 ggarrange(p1,p2,p3,p4,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
-p <- ggarrange(p5,p6,p7,p8,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
+ggarrange(p5,p6,p7,p8,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
 bia_s10_s1a
+bia_s10_s1b %>% mutate(across(year_0:year_5, round, 0)) %>% slice(2,3,4,5,6,1,8,9,10,11,12,7,14,15,16,17,18,13) %>% select(4:10) %>% filter(cost_group!="cost_maint")
 bia_total
 cost_increase_percent
+
+
+# aa <- data.frame(cost_group=c("No case detection strategy costs","Case detection strategy costs","Budget impact"), year_0=rep(0,3),year_1=rep(0,3),year_2=rep(0,3),year_3=rep(0,3),year_4=rep(0,3),year_5=rep(0,3))
+# a <- bia_s10_s3d %>% mutate(across(year_0:year_5, round, 0)) %>% 
+#   select(4:10) %>% filter(cost_group!="cost_maint" & cost_group!="bia_maint") %>% 
+#   mutate(cost_group=fct_recode(cost_group,"Total"="cost_total","Case detection"="cost_case_detection","Treatment"="cost_treat","Outpatient"="cost_other","Hospitalisation"="cost_hosp",
+#                          "Total"="bia_total","Case detection"="bia_case_detection","Treatment"="bia_treat","Outpatient"="bia_other","Hospitalisation"="bia_hosp")) %>% 
+#   bind_rows(aa) %>% slice(16,2,3,4,5,1,17,7,8,9,10,6,18,12,13,14,15,11) %>% mutate(across(-1, prettyNum, big.mark=",", scientific=FALSE))
+# names(a) <- c("Outcome","Baseline (2021)","2022","2023","2024","2025","2026")
+# write.table(a, file = "testtab.txt", sep = ".", quote = FALSE, row.names = F)
+
+
+
+
+rowSums((abs(bia_total[7,-c(1,2)])/colSums(abs(bia_total[c(7,8,10,12),-c(1,2)]))*100))/8
 
 
 ```
@@ -748,8 +767,8 @@ bia_pp_total <- bia_pp_all_long %>%
 
 
 
-grid.arrange(p1,p2,p3,p4,nrow=2)
-grid.arrange(p5,p6,p7,p8,nrow=2)
+grid.arrange(p1,p2,p3,p4,nrow=2,common.legend=TRUE,legend="bottom")
+grid.arrange(p5,p6,p7,p8,nrow=2,common.legend=TRUE,legend="bottom")
 bia_pp_s10_s1a
 bia_pp_total
 
