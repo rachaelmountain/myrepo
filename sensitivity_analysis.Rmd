@@ -27,7 +27,7 @@ output: html_document
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18000000 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 18162236 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
   settings$update_continuous_outcomes_mode <- 1
   settings$random_number_agent_refill <- 1
@@ -43,7 +43,7 @@ output: html_document
   discount_rate <- 0 # the default
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
-  p_case_detection <- c(0.1,0.2,0.3,0.4,0.5) #c(0.1,0.15,0.2,0.25,0.3,0.3,0.3,0.3,0.3,0.3)
+  p_case_detection <- c(0.05,0.1,0.15,0.2,0.25) #c(0.1,0.15,0.2,0.25,0.3,0.3,0.3,0.3,0.3,0.3)
   p_correct_overdiagnosis <- 0.67 # did my own validation on this
   price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
   
@@ -380,25 +380,25 @@ bia_all_results <- function(data){
 ```{r run function, echo=FALSE, message=FALSE}
 
 
-SA_base <- bia_all_results(data=readRDS("results_base_5yrR_fixsim.Rda"))
+SA_base <- bia_all_results(data=readRDS("results_base_fixsim.Rda"))
 
 
-SA_MA03 <- bia_all_results(data=readRDS("results_MA03_5yrR_fixsim.Rda"))
+SA_MA03 <- bia_all_results(data=readRDS("results_MA03_fixsim.Rda"))
 
 
-SA_MA05 <- bia_all_results(data=readRDS("results_MA05_5yrR_fixsim.Rda"))
+SA_MA05 <- bia_all_results(data=readRDS("results_MA05_fixsim.Rda"))
 
 
-SA_NRT <- bia_all_results(data=readRDS("results_NRT_5yrR_fixsim.Rda"))
+SA_NRT <- bia_all_results(data=readRDS("results_NRT_fixsim.Rda"))
 
 
-SA_CDUlow <- bia_all_results(data=readRDS("results_CDUl_5yrR_fixsim.Rda"))
+SA_CDUlow <- bia_all_results(data=readRDS("results_CDUl_fixsim.Rda"))
 
 
 #SA_CDUmed <- bia_all_results(data=readRDS("results_CDUmed.Rda"))
 
 
-SA_CDUhigh <- bia_all_results(data=readRDS("results_CDUh_5yrR_fixsim.Rda"))
+SA_CDUhigh <- bia_all_results(data=readRDS("results_CDUh_fixsim.Rda"))
 
 
 
@@ -422,7 +422,7 @@ bi_SA_CDUhigh <- SA_CDUhigh$bia_total %>% mutate(case="CDUhigh", .before=cost_gr
 bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA_CDUlow, bi_SA_CDUhigh) %>% 
   pivot_longer(cols=s10:s3d, names_to="scenario",values_to="CAD") %>% 
   mutate(case=factor(case,levels=c("CDUlow","CDUhigh","base","NRT","MA05","MA03"))) %>%  
-  mutate(case=fct_recode(case,"CDU low"="CDUlow","CDU high"="CDUhigh","Base"="base","No NRT"="NRT","50% MA"="MA05","30% MA"="MA03")) %>%  
+  mutate(case=fct_recode(case,"CDU low"="CDUlow","CDU high"="CDUhigh","Reference"="base","No NRT"="NRT","50% MA"="MA05","30% MA"="MA03")) %>%  
   mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d"))
 
 
