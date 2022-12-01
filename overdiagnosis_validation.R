@@ -3,6 +3,8 @@
 #' @return validation test results
 #' @export
 validate_overdiagnosis <- function(n_sim = 1e+04) {
+  
+  n_sim=150000
 
   settings <- get_default_settings()
   settings$record_mode <- record_mode["record_mode_none"]
@@ -42,6 +44,26 @@ validate_overdiagnosis <- function(n_sim = 1e+04) {
     theme_bw() + ylab("Number of non-COPD subjects") + xlab("Years")
   
   plot(overdiag.plotted)
+  
+  
+  
+  overdiag.plot <- overdiag.plot %>% 
+    mutate(Proportion=ifelse(Variable=="NonCOPD",1-Proportion,Proportion))
+  
+  
+  overdiag.plotted2 <- ggplot2::ggplot(overdiag.plot, aes(x=Year, y=Proportion, col=Variable)) +
+    geom_line() + geom_point() + expand_limits(y = 0) +
+    theme_bw() + ylab("Proportion of non-COPD subjects") + xlab("Years")
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   message("\n")
   
