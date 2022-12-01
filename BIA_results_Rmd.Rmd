@@ -207,8 +207,8 @@ output:
     
     
     # overall results
-    overall <- data.frame(n_agents=output_ex$n_agents_post_CD,
-                          n_diagnosed=output_ex$n_diagnosed_true_post_CD,
+    overall <- data.frame(n_agents=output_ex$n_agents_CD,
+                          n_diagnosed=output_ex$n_diagnosed_true_CD,
                           n_CD_eligible=output_ex$n_case_detection_eligible)
     
     
@@ -360,7 +360,7 @@ output:
 
 # Read in data ------------------------------------------------------------
   
-  alldat <- readRDS("results_base_fixsim.Rda")
+  alldat <- readRDS("results_CDUh_fixsim.Rda")
 
   
 # * prepare data ----------------------------------------------------------
@@ -642,9 +642,7 @@ cost_increase_percent
 # write.table(a, file = "testtab.txt", sep = ".", quote = FALSE, row.names = F)
 
 
-
-
-rowSums((abs(bia_total[7,-c(1,2)])/colSums(abs(bia_total[c(7,8,10,12),-c(1,2)]))*100))/8
+#rowSums((abs(bia_total[7,-c(1,2)])/colSums(abs(bia_total[c(7,8,10,12),-c(1,2)]))*100))/8
 
 
 ```

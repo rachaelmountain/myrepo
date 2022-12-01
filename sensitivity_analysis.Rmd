@@ -433,7 +433,7 @@ p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"
   ylab("Additional total cost (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  geom_vline(xintercept="Base", linetype="dashed", color = "darkgrey") +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
 p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenario!="S10"),
@@ -442,7 +442,7 @@ p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenar
   ylab("Additional case detection costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  geom_vline(xintercept="Base", linetype="dashed", color = "darkgrey") +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
 p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="S10"),
@@ -451,7 +451,7 @@ p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="S10"
   ylab("Additional treatment costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  geom_vline(xintercept="Base", linetype="dashed", color = "darkgrey") +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
 p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="S10"),
@@ -460,7 +460,7 @@ p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="S10")
   ylab("Additional hospitalisation costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  geom_vline(xintercept="Base", linetype="dashed", color = "darkgrey") +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
 
