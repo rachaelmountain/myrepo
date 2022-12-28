@@ -65,11 +65,13 @@ bia_table <- function(table,base_scenario,alt_scenario){
     
     base_table <- table %>%
       filter(scenario==base_scenario) %>%
-      select(year,scenario,criteria,CD_method,cost_total:cost_maint)
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
+      mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
     
     alt_table <- table %>%
       filter(scenario==alt_scenario) %>%
-      select(year,scenario,criteria,CD_method,cost_total:cost_maint)
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
+      mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
     
     bia_table <- data.frame(year=0:length(p_case_detection),
                             scenario=alt_scenario,
@@ -79,25 +81,27 @@ bia_table <- function(table,base_scenario,alt_scenario){
                             bia_case_detection=base_table$cost_case_detection-alt_table$cost_case_detection,
                             bia_treat=base_table$cost_treat-alt_table$cost_treat,
                             bia_hosp=base_table$cost_hosp-alt_table$cost_hosp,
-                            bia_maint=base_table$cost_maint-alt_table$cost_maint)
+                            bia_maint=base_table$cost_maint-alt_table$cost_maint,
+                            bia_other=base_table$cost_other-alt_table$cost_other)
     
     table <- bind_rows(
       base_table %>%
-        pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=cost_total:cost_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
       ,
       alt_table %>%
-        pivot_longer(cols=cost_total:cost_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=cost_total:cost_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
       ,
       bia_table %>%
-        pivot_longer(cols=bia_total:bia_maint,names_to="cost_group",values_to="CAD") %>%
+        pivot_longer(cols=bia_total:bia_other,names_to="cost_group",values_to="CAD") %>%
         pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
     )
     
     return(table)
     
   }
+
 
 
 
@@ -284,7 +288,7 @@ bia_all_results <- function(data){
 
 
   # insert baseline average into data set
-  all_results[which(all_results$year==0),5:36] <- baseline_avg
+  #all_results[which(all_results$year==0),5:36] <- baseline_avg
   
   
   overall <- all_overall %>% 
@@ -419,7 +423,7 @@ bi_SA_CDUlow <- SA_CDUlow$bia_total %>% mutate(case="CDUlow", .before=cost_group
 bi_SA_CDUhigh <- SA_CDUhigh$bia_total %>% mutate(case="CDUhigh", .before=cost_group)
 
 
-bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA_CDUlow, bi_SA_CDUhigh) %>% 
+bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA_CDUlow, bi_SA_CDUhigh) %>%
   pivot_longer(cols=s10:s3d, names_to="scenario",values_to="CAD") %>% 
   mutate(case=factor(case,levels=c("CDUlow","CDUhigh","base","NRT","MA05","MA03"))) %>%  
   mutate(case=fct_recode(case,"CDU low"="CDUlow","CDU high"="CDUhigh","Reference"="base","No NRT"="NRT","50% MA"="MA05","30% MA"="MA03")) %>%  
@@ -430,25 +434,28 @@ bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA
 p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  ylab("Additional total cost (million $)") + xlab("") +
+  ylab("Total costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
+  scale_y_continuous(breaks=seq(0,610,100)) +
   geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
-  theme_bw()
+  theme_bw() +
+  theme(legend.position="none")
 
 p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  ylab("Additional case detection costs (million $)") + xlab("") +
+  ylab("Case detection costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
+  scale_y_continuous(breaks=seq(0,610,100)) +
   geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
   theme_bw()
 
 p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  ylab("Additional treatment costs (million $)") + xlab("") +
+  ylab("Treatment costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
   geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
@@ -457,7 +464,16 @@ p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="S10"
 p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  ylab("Additional hospitalisation costs (million $)") + xlab("") +
+  ylab("Hospitalisation costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  theme_bw()
+
+p44 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_other" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Outpatient care costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
   geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
@@ -500,7 +516,11 @@ p8 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_hosp"),
 
 
 
-ggarrange(p1,p2,p3,p4,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
+ggarrange(p1,
+          ggarrange(p2,p3,p4,p44,ncol=2,nrow=2,common.legend=TRUE,legend="bottom"),
+          nrow=2
+)
+
 ggarrange(p5,p6,p7,p8,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
 
 
