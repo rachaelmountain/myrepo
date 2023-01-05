@@ -536,7 +536,8 @@ bia_all_long <- bind_rows(bia_s10_s1a,
   # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
   #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>%
   # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031"))) %>% 
-  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d"))
+  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d")) %>% 
+  mutate(year=as.numeric(year)+2020)
 
 
 
@@ -577,15 +578,18 @@ p4 <- ggplot(bia_all_long %>% filter(cost_group=="cost_hosp"),
 p5 <- ggplot(bia_all_long %>% filter(cost_group=="bia_total" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
   ylab("Total costs (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
-  scale_y_continuous(breaks=seq(0,140,25)) +
+  scale_y_continuous(breaks=seq(0,140,25),expand=c(0.02,0.02)) +
   theme_bw() +
   theme(legend.position="none")
 p6 <- ggplot(bia_all_long %>% filter(cost_group=="bia_case_detection" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
   ylab("Case detection costs (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
@@ -593,6 +597,8 @@ p6 <- ggplot(bia_all_long %>% filter(cost_group=="bia_case_detection" & scenario
 p7 <- ggplot(bia_all_long %>% filter(cost_group=="bia_treat" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
   ylab("Treatment costs (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
@@ -600,6 +606,8 @@ p7 <- ggplot(bia_all_long %>% filter(cost_group=="bia_treat" & scenario!="s10"),
 p8 <- ggplot(bia_all_long %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
   ylab("Hospitalisation costs (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
@@ -608,6 +616,8 @@ p8 <- ggplot(bia_all_long %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
 p9 <- ggplot(bia_all_long %>% filter(cost_group=="bia_other" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
   ylab("Outpatient care costs (million $)") + xlab("Year") +
   geom_point() +
   geom_line() +
@@ -640,6 +650,8 @@ ggarrange(p5,
           ggarrange(p6,p7,p8,p9,ncol=2,nrow=2,common.legend=TRUE,legend="bottom"),
           nrow=2
 )
+#ggsave("test.tiff",width=6000,height=8400,units="px",dpi=600)
+
 
 bia_s10_s1a
 bia_s10_s1b %>% mutate(across(year_0:year_5, round, 0)) %>% slice(2,3,4,5,6,1,8,9,10,11,12,7,14,15,16,17,18,13) %>% select(4:10) %>% filter(cost_group!="cost_maint")
