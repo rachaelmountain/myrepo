@@ -5,7 +5,7 @@ output:
   html_document: default
 ---
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 
   library(epicR)
   library(tidyverse)
@@ -15,9 +15,9 @@ output:
   library(ggpubr)
   library(knitr)
   library(kableExtra)
+  library(ggrepel)
 
 ```
-
 
 ```{r global settings, echo=FALSE}
 
@@ -27,9 +27,9 @@ output:
                    record_mode_some_event=3)
 
   settings <- get_default_settings()
-  settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18162236 #18e+6 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
-  settings$n_base_agents <- settings$n_base_agents - 1 # since it starts at id=0 ; ask Amin about this
+  settings$record_mode <- record_mode["record_mode_none"] 
+  settings$n_base_agents <- 18162236 # change number of agents - 18mil=est Canadian pop >= 40, 1st Jan 2015      https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- settings$n_base_agents - 1 
   settings$update_continuous_outcomes_mode <- 1
   settings$random_number_agent_refill <- 1
 
@@ -45,11 +45,13 @@ output:
   CD_end_year <- CD_end_cal_year - 2015 # default is 50 i.e. no case detection
   discount_rate <- 0 # the default
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
-  smoking_adherence <- 0.7 # the default, adjust for sensitivity analysis
+  smoking_adherence <- 0 # the default, adjust for sensitivity analysis
   p_case_detection <- c(0.05,0.1,0.15,0.2,0.25) 
   p_correct_overdiagnosis <- 0.67 # did my own validation on this
   price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
   
+  
+  max_age <- 75 #85 #79 # default 111 - max age in EPIC
   
   
   # set buffer sizes
@@ -60,7 +62,6 @@ output:
 
 
 ```
-
 
 ```{r functions, echo=FALSE}
 
@@ -102,7 +103,6 @@ output:
     }
 
     input$values$global_parameters$time_horizon <- time_horizon #time_horizon + (CD_start_year-2015) + 1
-    #if(CD_method!="None"){ # can't have this line of code otherwise things like n_agents post CD not counted
       input$values$diagnosis$case_detection_start_end_yrs <- c(CD_start_year, CD_end_year)
     #}
     input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
@@ -115,6 +115,7 @@ output:
     input$values$diagnosis$p_correct_overdiagnosis <- p_correct_overdiagnosis
 
     input$values$diagnosis$min_cd_age <- min_age
+    input$values$diagnosis$max_cd_age <- max_age
     input$values$diagnosis$min_cd_pack_years <- min_pack_years
     input$values$diagnosis$min_cd_symptoms <- num_symptoms
 
@@ -130,7 +131,7 @@ output:
     input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr
     input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr
 
-    set.seed(333)
+    set.seed(445) #333
     run(input = input$values)
 
     output <- Cget_output()
@@ -177,7 +178,7 @@ output:
     hosps_cost <- input$values$cost$exac_dcost[3:4]
     hosps_cost_yr <- rowSums(t(c(hosps_cost)*t(hosps)))
 
-    copd <- output_ex$n_COPD_by_ctime_severity[,2:5] # column 1 is gold grade 0 i.e. no copd
+    copd <- output_ex$cumul_time_by_ctime_GOLD[,2:5] #output_ex$n_COPD_by_ctime_severity[,2:5] # column 1 is gold grade 0 i.e. no copd
     main_cost <- input$values$cost$bg_cost_by_stage[2:5]
     copd_cost_yr <- rowSums(t(c(main_cost)*t(copd)))
 
@@ -226,11 +227,16 @@ output:
     
     base_table <- table %>%
       filter(scenario==base_scenario) %>%
+      mutate(cost_case_detection_time=case_detection*11.91, .after=cost_case_detection) %>% 
+      mutate(cost_case_detection_use=cost_case_detection-cost_case_detection_time, .after=cost_case_detection_time) %>% 
       select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
       mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
+      
     
     alt_table <- table %>%
       filter(scenario==alt_scenario) %>%
+      mutate(cost_case_detection_time=case_detection*11.91, .after=cost_case_detection) %>% 
+      mutate(cost_case_detection_use=cost_case_detection-cost_case_detection_time, .after=cost_case_detection_time) %>% 
       select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
       mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
     
@@ -309,59 +315,51 @@ output:
 
 ```
 
-
-
-
 ```{r run simulations, echo=FALSE, message=FALSE}
 
   # * S1: All patients ------------------------------------------------------
   
   s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
-  #saveRDS(s10,"s10.Rda")
+  saveRDS(s10,"s10.Rda")
   s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
-  #saveRDS(s1a,"s1a.Rda")
+  saveRDS(s1a,"s1a.Rda")
   s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
-  #saveRDS(s1b,"s1b.Rda")
+  saveRDS(s1b,"s1b.Rda")
   s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
-  #saveRDS(s1c,"s1c.Rda")
+  saveRDS(s1c,"s1c.Rda")
 
   
   # * S2: Symptomatic patients ----------------------------------------------
   
-  #s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
   s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
-  #saveRDS(s2a,"s2a.Rda")
+  saveRDS(s2a,"s2a.Rda")
 
   
   # * S3: Eversmokers + age >= 50 -------------------------------------------
   
-  #s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
   s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
-  #saveRDS(s3a,"s3a.Rda")
+  saveRDS(s3a,"s3a.Rda")
   s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
-  #saveRDS(s3b,"s3b.Rda")
+  saveRDS(s3b,"s3b.Rda")
   s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
-  #saveRDS(s3c,"s3c.Rda")
+  saveRDS(s3c,"s3c.Rda")
   s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
-  #saveRDS(s3d,"s3d.Rda")
+  saveRDS(s3d,"s3d.Rda")
 
   
   # save all results
   all_s <- list(s10=s10,s1a=s1a,s1b=s1b,s1c=s1c,s2a=s2a,s3a=s3a,s3b=s3b,s3c=s3c,s3d=s3d)
-  saveRDS(all_s, "results_base_fixsim.Rda")
+  #saveRDS(all_s, "results_maxage445_resubmit.Rda")
   
 
 ```
-
-
-
 
 ```{r load and prepare data, echo=FALSE}
 
 # Read in data ------------------------------------------------------------
   
-  alldat <- readRDS("results_base_fixsim.Rda")
-
+  alldat <- readRDS("results_base445_resubmit.Rda")
+  #alldat <- all_s
   
 # * prepare data ----------------------------------------------------------
 
@@ -415,8 +413,6 @@ output:
 
 ```
 
-
-
 ```{r baseline year, echo=FALSE}
 
 
@@ -436,7 +432,7 @@ baseline_avg <- baseline_compar_raw %>%
             smoke=mean(smoke),
             copd=mean(copd),
             copd_prev=mean(copd_prev),
-            copd_sev=mean(copd_sev),
+            #copd_sev=mean(copd_sev),
             diags_true=mean(diags_true),
             diags_true_prev=mean(diags_true_prev),
             diags_false=mean(diags_false),
@@ -467,7 +463,7 @@ baseline_avg <- baseline_compar_raw %>%
 
 
   # insert baseline average into data set
-  all_results[which(all_results$year==0),5:36] <- baseline_avg
+  #all_results[which(all_results$year==0),5:36] <- baseline_avg
 
 
 baseline_compar_raw
@@ -476,9 +472,6 @@ baseline_avg
   
 
 ```
-
-
-
 
 ```{r overall results, echo=FALSE}
 
@@ -506,8 +499,6 @@ overall
 
 ```
 
-
-
 ```{r BIA results, echo=FALSE, message=FALSE, warning=FALSE}
 
 
@@ -533,11 +524,256 @@ bia_all_long <- bind_rows(bia_s10_s1a,
   distinct() %>% 
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
   mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5")) %>% 
-  # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
-  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>%
-  # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031"))) %>% 
   mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d")) %>% 
-  mutate(year=as.numeric(year)+2020)
+  mutate(year=as.numeric(year)+2020) %>% 
+  mutate(label=if_else(year==max(year),as.character(scenario),NA_character_))
+
+
+
+
+# total cost and BI over time horizon - used to produce table 4 of main article
+bia_total <- bia_all_long %>% 
+  filter(year!="2021") %>% 
+  group_by(scenario,cost_group) %>% 
+  summarize(total_CAD=sum(CAD)) %>% 
+  pivot_wider(names_from=scenario,values_from=total_CAD) 
+
+
+
+
+# cost plots. NOTE: these are costs not budget impact; these were not used in the final paper
+p1 <- ggplot(bia_all_long %>% filter(cost_group=="cost_total"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Total cost (million $)") + xlab("Year") +
+    geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2),
+        legend.position = "none") 
+
+p2 <- ggplot(bia_all_long %>% filter(cost_group=="cost_case_detection"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Case detection cost (million $)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p3 <- ggplot(bia_all_long %>% filter(cost_group=="cost_treat"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Treatment cost (million $)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p4 <- ggplot(bia_all_long %>% filter(cost_group=="cost_hosp"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Hospitalization cost (million $)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey") +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p5 <- ggplot(bia_all_long %>% filter(cost_group=="cost_other"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Outpatient care cost (million $)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+
+
+
+# budget impact plots plots
+p6 <- ggplot(bia_all_long %>% filter(cost_group=="bia_total" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01),limits=c(2021,2026.2)) +
+  scale_y_continuous(breaks=seq(0,140,25),expand=c(0.02,0.02),limits=c(0,131)) +
+  ylab("Total costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y")
+
+p7 <- ggplot(bia_all_long %>% filter(cost_group=="bia_case_detection" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01),limits=c(2021,2026.5)) +
+  scale_y_continuous(breaks=seq(0,140,25),expand=c(0.02,0.02),limits=c(0,131)) +
+  ylab("Case detection costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2),
+        legend.position = "none") +
+  guides(colour = guide_legend(nrow = 1)) +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.3,
+                  min.segment.length=Inf,
+                  #box.padding=0.1,
+                  #force=0.05,
+                  direction = "y")
+
+p8 <- ggplot(bia_all_long %>% filter(cost_group=="bia_treat" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01),limits=c(2021,2026.5)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Treatment costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2),
+        legend.position = "none") +
+  guides(colour = guide_legend(nrow = 1)) +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.3,
+                  min.segment.length=Inf,
+                  direction="y")
+
+p9 <- ggplot(bia_all_long %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01),limits=c(2021,2026.5)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Hospitalisation costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey") +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2),
+        legend.position = "none") +
+  guides(colour = guide_legend(nrow = 1)) +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.3,
+                  min.segment.length=Inf,
+                  #box.padding=0.05,
+                  #force=0.1,
+                  #force_pull=0.3,
+                  direction="y")
+
+p10 <- ggplot(bia_all_long %>% filter(cost_group=="bia_other" & scenario!="s10"),
+              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01),limits=c(2021,2026.5)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Outpatient care costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2),
+        legend.position = "none") +
+  guides(colour = guide_legend(nrow = 1)) +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.3,
+                  min.segment.length=Inf,
+                  direction="y")
+
+
+
+
+# print results
+
+# total budget impact table (table 4 of main article)
+bia_total 
+
+# total costs combined plot (not used in main article)
+ggarrange(p1,
+          ggarrange(p2,p3,p4,p5,ncol=2,nrow=2,common.legend=TRUE,legend="bottom"),
+          nrow=2
+)
+
+
+# budget impact combined plot (figure 2 of main article)
+
+ggarrange(p6,
+          ggarrange(p7,p8,p9,p10,ncol=2,nrow=2),
+          nrow=2
+)
+
+ggsave("base_resubmit.tiff",width=6000,height=8400,units="px",dpi=600)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r ISPOR plots, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+# run budget impact function
+bia_s10_s1a <- bia_table(all_results,"s10","s1a")
+bia_s10_s1b <- bia_table(all_results,"s10","s1b")
+bia_s10_s1c <- bia_table(all_results,"s10","s1c")
+bia_s10_s2a <- bia_table(all_results,"s10","s2a")
+bia_s10_s3a <- bia_table(all_results,"s10","s3a")
+bia_s10_s3b <- bia_table(all_results,"s10","s3b")
+bia_s10_s3c <- bia_table(all_results,"s10","s3c")
+bia_s10_s3d <- bia_table(all_results,"s10","s3d")
+
+
+bia_all_long <- bind_rows(bia_s10_s1a,
+                          bia_s10_s1b,
+                          bia_s10_s1c,
+                          bia_s10_s2a,
+                          bia_s10_s3a,
+                          bia_s10_s3b,
+                          bia_s10_s3c,
+                          bia_s10_s3d) %>% 
+  distinct() %>% 
+  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
+  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5")) %>% 
+  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d")) %>% 
+  mutate(year=as.numeric(year)+2020) %>% 
+  mutate(label=if_else(year==max(year),as.character(scenario),NA_character_))
 
 
 
@@ -579,50 +815,70 @@ p5 <- ggplot(bia_all_long %>% filter(cost_group=="bia_total" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
   scale_x_continuous(expand=c(0.01,0.01)) +
-  ylab("Total costs (million $)") + xlab("Year") +
+  ylab("Additional costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  scale_y_continuous(breaks=seq(0,140,25),expand=c(0.02,0.02)) +
+  scale_y_continuous(breaks=seq(0,140,25),expand=c(0.02,0.02),limits=c(0,131)) +
   theme_bw() +
-  theme(legend.position="none")
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) +
+  annotate("label", x=2021.3, y = 126, label = "Total", size=6) 
 p6 <- ggplot(bia_all_long %>% filter(cost_group=="bia_case_detection" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
   scale_x_continuous(expand=c(0.01,0.01)) +
-  scale_y_continuous(expand=c(0.02,0.02)) +
-  ylab("Case detection costs (million $)") + xlab("Year") +
+  scale_y_continuous(breaks=seq(0,140,25),expand=c(0.02,0.02),limits=c(0,131)) +
+  ylab("Additional costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  theme_bw()
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) +
+  annotate("label", x = 2021.85, y = 126, label = "Case detection", size=6) 
 p7 <- ggplot(bia_all_long %>% filter(cost_group=="bia_treat" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
   scale_x_continuous(expand=c(0.01,0.01)) +
   scale_y_continuous(expand=c(0.02,0.02)) +
-  ylab("Treatment costs (million $)") + xlab("Year") +
+  ylab("Additional costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  theme_bw()
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) +
+  annotate("label", x = 2021.6, y = 30, label = "Treatment", size=6) 
 p8 <- ggplot(bia_all_long %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
   scale_x_continuous(expand=c(0.01,0.01)) +
   scale_y_continuous(expand=c(0.02,0.02)) +
-  ylab("Hospitalisation costs (million $)") + xlab("Year") +
+  ylab("Additional costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
   geom_hline(yintercept=0, linetype="dashed", color = "darkgrey") +
-  theme_bw()
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) +
+  annotate("label", x = 2021.8, y = 1.95, label = "Hospitalization", size=6) 
 p9 <- ggplot(bia_all_long %>% filter(cost_group=="bia_other" & scenario!="s10"),
              aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
   scale_x_continuous(expand=c(0.01,0.01)) +
   scale_y_continuous(expand=c(0.02,0.02)) +
-  ylab("Outpatient care costs (million $)") + xlab("Year") +
+  ylab("Outpatient care costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  #geom_hline(yintercept=0, linetype="dashed", color = "darkgrey") +
-  theme_bw()
+  theme_bw() + 
+  guides(colour = guide_legend(nrow = 1)) +
+  annotate("label", x = 2021.5, y = 125, label = "Outpatient", size=5) 
 
 
 
@@ -646,16 +902,19 @@ cost_increase_percent <- bia_total %>%
 
 ggarrange(p1,p2,p3,p4,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
 
+ggarrange(p5,p6,p7,p8,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
+#ggsave("test.tiff",width=7000,height=5000,units="px",dpi=600)
+
 ggarrange(p5,
           ggarrange(p6,p7,p8,p9,ncol=2,nrow=2,common.legend=TRUE,legend="bottom"),
           nrow=2
 )
-#ggsave("test.tiff",width=6000,height=8400,units="px",dpi=600)
+
 
 
 bia_s10_s1a
 bia_s10_s1b %>% mutate(across(year_0:year_5, round, 0)) %>% slice(2,3,4,5,6,1,8,9,10,11,12,7,14,15,16,17,18,13) %>% select(4:10) %>% filter(cost_group!="cost_maint")
-bia_total
+cbind(bia_total[,1],round(bia_total[,-1]/1000000))
 cost_increase_percent
 
 
@@ -673,10 +932,6 @@ cost_increase_percent
 
 
 ```
-
-
-
-
 
 ```{r BIA per person results, echo=FALSE, message=FALSE, warning=FALSE}
 
@@ -802,26 +1057,22 @@ bia_pp_total
 
 ```
 
-
-
-
-
 ```{r health outcomes results, echo=FALSE}
 
 # * health outcomes results -----------------------------------------------
 
 
 all_results_ho <- all_results %>%
-  select(year,scenario,criteria,CD_method,copd_sev,diags_true,diags_false,exacs,exacs_mild,exacs_mod,exacs_sev,exacs_vsev,deaths) %>%
-  pivot_longer(cols=copd_sev:deaths,names_to="ho_group",values_to="count") %>%
+  select(year,scenario,criteria,CD_method,alive,copd,copd_sev,diags_true,diags_false,exacs,exacs_mild,exacs_mod,exacs_sev,exacs_vsev,deaths) %>%
+  mutate(overd_prev=diags_false/(alive-copd)*100,.after=diags_false) %>% 
+  pivot_longer(cols=alive:deaths,names_to="ho_group",values_to="count") %>%
   pivot_wider(names_from=year,names_prefix="year_",values_from=count)
 
 all_results_ho_long <- all_results_ho %>%
   pivot_longer(cols=year_0:year_5,names_to="year",values_to="count") %>% 
-  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
-  # mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5",
-  #                        "2027"="year_6","2028"="year_7","2029"="year_8","2030"="year_9","2031"="year_10")) %>%
-  # mutate(year=factor(year,levels=c("2021","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031")))
+  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5")) %>% 
+  mutate(year=as.numeric(year)+2020)
+
 
 
 
@@ -921,7 +1172,28 @@ all_results_ho_long %>%  filter(scenario=="s10" | scenario=="s1a") %>%
 # percentage change = 1.6% decrease
 
 
+# over diagnosis plot
+
+ggplot(all_results_ho_long %>% 
+         mutate(group=case_when(scenario=="s10" ~ "S0",
+                                criteria=="All patients" ~ "S1",
+                                criteria=="Symptomatic" ~ "S2",
+                                criteria=="Eversmokers" ~ "S3")) %>% 
+         filter(ho_group=="overd_prev") %>% 
+         group_by(group,year) %>% 
+         summarize(count=mean(count)),
+             aes(x=year,y=count,group=group,col=group)) +
+ scale_color_manual(values=c("#808080", "#F5594E", "#00C0B8", "#BF80FF"),name="") +
+  scale_x_continuous(expand=c(0.01,0.01),limits=c(2021,2026)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Overdiagnosed prevalence (%)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) 
+
+#ggsave("overdiag.tiff",width=6000,height=4000,units="px",dpi=600)
 
 ```
-
-

@@ -12,6 +12,7 @@ output: html_document
   library(ggplot2)
   library(gridExtra)
   library(ggpubr)
+  library(ggrepel)
   library(knitr)
   library(kableExtra)
 
@@ -61,15 +62,178 @@ output: html_document
 
 ```{r BIA table, echo=FALSE}
 
-bia_table <- function(table,base_scenario,alt_scenario){
+# * EPIC simulation ------------------------------------------------------------
+
+  # CD_method : "None" "CDQ17" "CDQ195" "CDQ165" "FlowMeter" "FlowMeter_CDQ"
+  # eligibility_criteria : "All patients" "Symptomatic" "Eversmokers"
+
+  BIA_simul <- function(CD_method, eligibility_criteria){
+
+    #CD_method <- "FlowMeter" ; eligibility_criteria <- "All patients"
+
+    if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
+      print("Unknown case detection method")
+    }
+
+    ### run simulation
+    init_session(settings=settings)
+    input <- get_input()
+
+    if(eligibility_criteria=="All patients"){
+      min_age <- 40
+      min_pack_years <- 0
+      num_symptoms <- 0
+      CD_values <- input$values$diagnosis$case_detection_methods[,CD_method]
+    }else if (eligibility_criteria=="Symptomatic"){
+      min_age <- 40
+      min_pack_years <- 0
+      num_symptoms <- 1
+      CD_values <- input$values$diagnosis$case_detection_methods_symptomatic[,CD_method]
+    }else if (eligibility_criteria=="Eversmokers"){
+      min_age <- 50
+      min_pack_years <- 0.001
+      num_symptoms <- 0
+      CD_values <- input$values$diagnosis$case_detection_methods_eversmokers[,CD_method]
+    }else{
+      terminate_session()
+      return("Unknown eligibility criteria")
+    }
+
+    input$values$global_parameters$time_horizon <- time_horizon #time_horizon + (CD_start_year-2015) + 1
+      input$values$diagnosis$case_detection_start_end_yrs <- c(CD_start_year, CD_end_year)
+    #}
+    input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
+    input$values$global_parameters$discount_cost <- discount_rate
+    input$values$medication$medication_adherence <- med_adherence
+    input$values$smoking$smoking_cessation_adherence <- smoking_adherence
+    if(CD_method!="None"){
+    input$values$diagnosis$p_case_detection[(CD_start_year+1):(CD_start_year+length(p_case_detection))] <- p_case_detection
+    }
+    input$values$diagnosis$p_correct_overdiagnosis <- p_correct_overdiagnosis
+
+    input$values$diagnosis$min_cd_age <- min_age
+    #input$values$diagnosis$max_cd_age <- max_age
+    input$values$diagnosis$min_cd_pack_years <- min_pack_years
+    input$values$diagnosis$min_cd_symptoms <- num_symptoms
+
+    input$values$cost$cost_case_detection <- CD_values[3]*price_yr
+    input$values$diagnosis$logit_p_prevalent_diagnosis_by_sex["case_detection.None",] <- CD_values[1]
+    input$values$diagnosis$logit_p_diagnosis_by_sex["case_detection.None",] <- CD_values[1]
+    input$values$diagnosis$logit_p_overdiagnosis_by_sex["case_detection.None",] <- CD_values[2]
+
+    input$values$cost$bg_cost_by_stage <- input$values$cost$bg_cost_by_stage*price_yr
+    input$values$cost$cost_smoking_cessation <- input$values$cost$cost_smoking_cessation*price_yr
+    input$values$cost$exac_dcost <- input$values$cost$exac_dcost*price_yr
+    input$values$cost$cost_outpatient_diagnosis <- input$values$cost$cost_outpatient_diagnosis*price_yr
+    input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr
+    input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr
+
+    set.seed(445) #333
+    run(input = input$values)
+
+    output <- Cget_output()
+    output_ex <- Cget_output_ex()
+
+    terminate_session()
+
+
+    # number alive
+    base <- data.frame(year=1:(time_horizon),
+                       criteria=eligibility_criteria,
+                       CD_method=CD_method,
+                       alive=rowSums(output_ex$n_alive_by_ctime_sex),
+                       sex=output_ex$n_alive_by_ctime_sex[,2], # is this male or female???
+                       smoke=output_ex$n_smoking_status_by_ctime[,2]
+    )
+
+    # number with COPD and diagnosed
+    diags <- data.frame(copd=rowSums(output_ex$n_COPD_by_ctime_severity[,2:5]),
+                        copd_sev=output_ex$n_COPD_by_ctime_severity[,4],
+                        diags_true=rowSums(output_ex$n_Diagnosed_by_ctime_severity[,2:5]), # diagnosed here is true diagnosed only
+                        diags_false=rowSums(output_ex$n_Overdiagnosed_by_ctime_sex),
+                        diags_total=rowSums(output_ex$n_Diagnosed_by_ctime_severity[,2:5])+rowSums(output_ex$n_Overdiagnosed_by_ctime_sex)
+    )
+
+    # health outcomes
+    healthOC <- data.frame(exacs=rowSums(output_ex$n_exac_by_ctime_severity),
+                           exacs_mild=output_ex$n_exac_by_ctime_severity[,1],
+                           exacs_mod=output_ex$n_exac_by_ctime_severity[,2],
+                           exacs_sev=output_ex$n_exac_by_ctime_severity[,3],
+                           exacs_vsev=output_ex$n_exac_by_ctime_severity[,4],
+                           deaths=rowSums(output_ex$n_exac_death_by_ctime_severity),
+                           NRT=output_ex$n_smoking_cessation_by_ctime)
+
+    # number of case detections
+    case_detection <- data.frame(case_detection=rowSums(output_ex$n_case_detection_by_ctime),
+                                 CD_true_pos=output_ex$n_case_detection_by_ctime[,3],
+                                 CD_false_pos=output_ex$n_case_detection_by_ctime[,2])
+
+    # costs
+    costs <- output_ex$annual_cost_ctime
+
+    hosps <- output_ex$n_exac_by_ctime_severity[,3:4]
+    hosps_cost <- input$values$cost$exac_dcost[3:4]
+    hosps_cost_yr <- rowSums(t(c(hosps_cost)*t(hosps)))
+
+    copd <- output_ex$cumul_time_by_ctime_GOLD[,2:5] #output_ex$n_COPD_by_ctime_severity[,2:5] # column 1 is gold grade 0 i.e. no copd
+    main_cost <- input$values$cost$bg_cost_by_stage[2:5]
+    copd_cost_yr <- rowSums(t(c(main_cost)*t(copd)))
+
+    caseds <- output_ex$n_case_detection_by_ctime
+    caseds_cost <- c(input$values$cost$cost_case_detection,
+                     input$values$cost$cost_case_detection+input$values$cost$cost_outpatient_diagnosis,
+                     input$values$cost$cost_case_detection+input$values$cost$cost_outpatient_diagnosis)
+    caseds_cost_yr <- rowSums(t(c(caseds_cost)*t(caseds)))
+
+    medyrs <- output_ex$medication_time_by_ctime_class[,1:4]
+    medyrs_combos <- data.frame(SABA=medyrs[,1],
+                                LAMA=medyrs[,3]-medyrs[,2],
+                                LAMA_LABA=medyrs[,2]-medyrs[,4],
+                                ICS_LAMA_LABA=medyrs[,4])
+    meds_cost <- input$values$medication$medication_costs[c(2,5,7,15)]
+    meds_cost_yr <- rowSums(t(c(meds_cost)*t(medyrs_combos))) + 
+      output_ex$n_smoking_cessation_by_ctime*input$values$cost$cost_smoking_cessation
+
+    costs_subcs <- data.frame(cost_total=costs,
+                              cost_case_detection=caseds_cost_yr,
+                              cost_treat=meds_cost_yr,
+                              cost_hosp=hosps_cost_yr,
+                              cost_maint=copd_cost_yr)
+
+    results <- cbind(base,diags,healthOC,case_detection,costs_subcs)
+    
+    
+    
+    # overall results
+    overall <- data.frame(n_agents=output_ex$n_agents_CD,
+                          n_diagnosed=output_ex$n_diagnosed_true_CD,
+                          n_CD_eligible=output_ex$n_case_detection_eligible)
+    
+    
+    
+    return(list(overall=overall,results=results))
+
+    }
+  
+
+
+
+  # * BIA table - compare two scenarios -------------------------------------
+  
+  bia_table <- function(table,base_scenario,alt_scenario){
     
     base_table <- table %>%
       filter(scenario==base_scenario) %>%
+      mutate(cost_case_detection_time=case_detection*11.91, .after=cost_case_detection) %>% 
+      mutate(cost_case_detection_use=cost_case_detection-cost_case_detection_time, .after=cost_case_detection_time) %>% 
       select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
       mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
+      
     
     alt_table <- table %>%
       filter(scenario==alt_scenario) %>%
+      mutate(cost_case_detection_time=case_detection*11.91, .after=cost_case_detection) %>% 
+      mutate(cost_case_detection_use=cost_case_detection-cost_case_detection_time, .after=cost_case_detection_time) %>% 
       select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
       mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
     
@@ -101,6 +265,8 @@ bia_table <- function(table,base_scenario,alt_scenario){
     return(table)
     
   }
+
+
 
 
 
@@ -287,14 +453,11 @@ bia_all_results <- function(data){
               )
 
 
-  # insert baseline average into data set
-  #all_results[which(all_results$year==0),5:36] <- baseline_avg
   
   
   overall <- all_overall %>% 
     inner_join(
       all_results %>% 
-        #filter(year>0) %>% 
         group_by(scenario) %>% 
         summarize(case_detection=sum(case_detection),
                   true_positive=sum(CD_true_pos),
@@ -339,15 +502,7 @@ bia_all_results <- function(data){
     group_by(scenario,cost_group) %>% 
     summarize(total_CAD=sum(CAD)) %>% 
     pivot_wider(names_from=scenario,values_from=total_CAD) 
-  
-  
-  # all_results_ho <- all_results %>% 
-  #   filter(year!=0) %>% 
-  #   group_by(scenario) %>% 
-  #   summarize(exacs=sum(exacs),exacs_mild=sum(exacs_mild),exacs_mod=sum(exacs_mod),exacs_sev=sum(exacs_sev)+sum(exacs_vsev))
-  # all_results_ho <- all_results_ho %>% 
-  #   mutate(exacs_diff=)
-  
+
   
   ho_s10_s1a <- ho_table(all_results,"s10","s1a")
   ho_s10_s1b <- ho_table(all_results,"s10","s1b")
@@ -384,25 +539,25 @@ bia_all_results <- function(data){
 ```{r run function, echo=FALSE, message=FALSE}
 
 
-SA_base <- bia_all_results(data=readRDS("results_base_fixsim.Rda"))
+SA_base <- bia_all_results(data=readRDS("results_base445_resubmit.Rda"))
 
 
-SA_MA03 <- bia_all_results(data=readRDS("results_MA03_fixsim.Rda"))
+SA_MA03 <- bia_all_results(data=readRDS("results_MA03445_resubmit.Rda"))
 
 
-SA_MA05 <- bia_all_results(data=readRDS("results_MA05_fixsim.Rda"))
+SA_MA05 <- bia_all_results(data=readRDS("results_MA05445_resubmit.Rda"))
 
 
-SA_NRT <- bia_all_results(data=readRDS("results_NRT_fixsim.Rda"))
+SA_NRT <- bia_all_results(data=readRDS("results_NRT445_resubmit.Rda"))
 
 
-SA_CDUlow <- bia_all_results(data=readRDS("results_CDUl_fixsim.Rda"))
+SA_CDUlow <- bia_all_results(data=readRDS("results_CDUlow445_resubmit.Rda"))
 
 
 #SA_CDUmed <- bia_all_results(data=readRDS("results_CDUmed.Rda"))
 
 
-SA_CDUhigh <- bia_all_results(data=readRDS("results_CDUh_fixsim.Rda"))
+SA_CDUhigh <- bia_all_results(data=readRDS("results_CDUhigh445_resubmit.Rda"))
 
 
 
@@ -427,9 +582,13 @@ bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA
   pivot_longer(cols=s10:s3d, names_to="scenario",values_to="CAD") %>% 
   mutate(case=factor(case,levels=c("CDUlow","CDUhigh","base","NRT","MA05","MA03"))) %>%  
   mutate(case=fct_recode(case,"CDU low"="CDUlow","CDU high"="CDUhigh","Reference"="base","No NRT"="NRT","50% MA"="MA05","30% MA"="MA03")) %>%  
-  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d"))
+  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d")) %>%
+  mutate(label=if_else(case=="30% MA",as.character(scenario),NA_character_))
 
 
+
+specVals <- levels(bia_SA_combine$case)
+bia_SA_combine$case <- as.numeric(bia_SA_combine$case)
 
 p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
@@ -437,64 +596,109 @@ p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"
   ylab("Total costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  scale_x_discrete(expand=c(0.01,0.01)) +
+  scale_x_continuous(expand=c(0.01,0.01),
+                   limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.2),
+                   breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                   labels=c(specVals,'')) +
+  #scale_x_discrete(expand=c(0.01,0.01)) +
   scale_y_continuous(breaks=seq(0,610,100), expand=c(0.02,0.02)) +
-  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
   theme_bw() +
-  theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+  theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1,vjust=1)) +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  hjust="left")
 
 p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  scale_x_discrete(expand=c(0.01,0.01)) +
   ylab("Case detection costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
+  scale_x_continuous(expand=c(0.01,0.01),
+                     limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.5),
+                     breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                     labels=c(specVals,'')) +
   scale_y_continuous(breaks=seq(0,610,100),expand=c(0.02,0.02)) +
-  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
   theme_bw() +
-  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  size=3)
 
 p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  scale_x_discrete(expand=c(0.01,0.01)) +
   scale_y_continuous(breaks=seq(0,100,25),expand=c(0.02,0.02)) +
   ylab("Treatment costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  scale_x_continuous(expand=c(0.01,0.01),
+                     limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.5),
+                     breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                     labels=c(specVals,'')) +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
   theme_bw() +
-  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  size=3)
 
 p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  scale_x_discrete(expand=c(0.01,0.01)) +
   scale_y_continuous(expand=c(0.02,0.02)) +
+  scale_x_continuous(expand=c(0.01,0.01),
+                     limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.5),
+                     breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                     labels=c(specVals,'')) +
   ylab("Hospitalisation costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
   theme_bw() +
-  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  size=3)
 
-p44 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_other" & scenario!="S10"),
+p5 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_other" & scenario!="S10"),
              aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
   scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
-  scale_x_discrete(expand=c(0.01,0.01)) +
   scale_y_continuous(expand=c(0.02,0.02)) +
+  scale_x_continuous(expand=c(0.01,0.01),
+                     limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.5),
+                     breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                     labels=c(specVals,'')) +
   ylab("Outpatient care costs (million $)") + xlab("") +
   geom_point() +
   geom_line() +
-  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
   theme_bw() +
-  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  size=3)
 
 
 
 
-p5 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_total"),
+p6 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_total"),
              aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
   #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Total cost (million CADs)") +
@@ -502,7 +706,7 @@ p5 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_total"),
   geom_line() +
   theme_bw()
 
-p6 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_case_detection"),
+p7 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_case_detection"),
              aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
   #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Case detection cost (million CADs)") +
@@ -510,7 +714,7 @@ p6 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_case_detection"),
   geom_line() +
   theme_bw()
 
-p7 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_treat"),
+p8 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_treat"),
              aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
   #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Treatment cost (million CADs)") +
@@ -518,7 +722,7 @@ p7 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_treat"),
   geom_line() +
   theme_bw()
 
-p8 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_hosp"),
+p9 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_hosp"),
              aes(x=case, y=CAD/1000000, group=scenario, col=scenario)) +
   #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
   ylab("Hospitalisation cost (million CADs)") +
@@ -529,26 +733,208 @@ p8 <- ggplot(bia_SA_combine %>% filter(cost_group=="cost_hosp"),
 
 
 ggarrange(p1,
-          ggarrange(p2,p3,p4,p44,ncol=2,nrow=2,common.legend=TRUE,legend="bottom"),
+          ggarrange(p2,p3,p4,p5,ncol=2,nrow=2),
           nrow=2
 )
 
+#ggsave("SAresubmit.tiff",width=6000,height=8400,units="px",dpi=600)
+
+
 #ggarrange(p5,p6,p7,p8,ncol=2,nrow=2,common.legend=TRUE,legend="bottom")
-ggsave("test.tiff",width=6000,height=8400,units="px",dpi=600)
+#ggsave("test.tiff",width=6000,height=8400,units="px",dpi=600)
 
 
-ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
-       aes(x=case, y=CAD/1000000, fill=scenario)) +
-  ylab("Total budget impact (million CADs)") +
-  geom_bar(stat="identity", position=position_dodge()) +
-  coord_flip() +
-  theme_bw()
+# ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
+#        aes(x=case, y=CAD/1000000, fill=scenario)) +
+#   ylab("Total budget impact (million CADs)") +
+#   geom_bar(stat="identity", position=position_dodge()) +
+#   coord_flip() +
+#   theme_bw()
 
 
 
 
 ```
 
+
+```{r Upper age limit, echo=FALSE, message=FALSE}
+
+SA_base <- bia_all_results(data=readRDS("results_base445_resubmit.Rda"))
+
+SA_75 <- bia_all_results(data=readRDS("results_maxage445_resubmit.Rda"))
+
+#SA_85 <- bia_all_results(data=readRDS("results_under85_fixsim.Rda"))
+
+
+
+
+bi_SA_base <- SA_base$bia_total %>% mutate(case="Reference", .before=cost_group)
+bi_SA_75 <- SA_75$bia_total %>% mutate(case="U75", .before=cost_group)
+#bi_SA_85 <- SA_85$bia_total %>% mutate(case="U85", .before=cost_group)
+
+
+bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_75) %>%
+  pivot_longer(cols=s10:s3d, names_to="scenario",values_to="CAD") %>% 
+  mutate(case=factor(case,levels=c("Reference","U75"))) %>%  
+  #mutate(case=fct_recode(case,"Reference"="base","U75"="U75")) %>%  
+  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d")) %>%
+  mutate(label=if_else(case=="U75",as.character(scenario),NA_character_))
+
+
+
+
+
+specVals <- levels(bia_SA_combine$case)
+bia_SA_combine$case <- as.numeric(bia_SA_combine$case)
+
+p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Total costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(expand=c(0.01,0.01),
+                   limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.05),
+                   breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                   labels=c(specVals,'')) +
+  #scale_x_discrete(expand=c(0.01,0.01)) +
+  scale_y_continuous(breaks=seq(0,610,100), expand=c(0.02,0.02)) +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1,vjust=1)) +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  hjust="left")
+
+p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Case detection costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(expand=c(0.01,0.01),
+                     limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.075),
+                     breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                     labels=c(specVals,'')) +
+  scale_y_continuous(breaks=seq(0,610,100),expand=c(0.02,0.02)) +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  size=3)
+
+p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_y_continuous(breaks=seq(0,100,25),expand=c(0.02,0.02)) +
+  ylab("Treatment costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(expand=c(0.01,0.01),
+                     limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.075),
+                     breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                     labels=c(specVals,'')) +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  size=3)
+
+p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  scale_x_continuous(expand=c(0.01,0.01),
+                     limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.075),
+                     breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                     labels=c(specVals,'')) +
+  ylab("Hospitalisation costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  size=3)
+
+p5 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_other" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  scale_x_continuous(expand=c(0.01,0.01),
+                     limits=c(min(bia_SA_combine$case),max(bia_SA_combine$case)+0.075),
+                     breaks=(min(bia_SA_combine$case)):(max(bia_SA_combine$case)+1), 
+                     labels=c(specVals,'')) +
+  ylab("Outpatient care costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept=3, linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        legend.position = "none") +
+  geom_text_repel(aes(label=label),
+                  nudge_x=0.2,
+                  min.segment.length=Inf,
+                  direction="y",
+                  size=3)
+
+
+
+ggarrange(p1,
+          ggarrange(p2,p3,p4,p5,ncol=2,nrow=2),
+          nrow=2
+)
+
+
+#ggsave("ageSAresubmit.tiff",width=6000,height=8400,units="px",dpi=600)
+
+
+
+```
+
+
+
+
+```{r ISPOR plot, echo=FALSE, message=FALSE}
+
+
+ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Total costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  scale_x_discrete(expand=c(0.01,0.01)) +
+  scale_y_continuous(breaks=seq(0,610,100), expand=c(0.02,0.02)) +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(legend.position="right",
+        axis.text.x=element_text(angle=45,hjust=1,vjust=1,size=16),
+        axis.text.y=element_text(size=16),
+        axis.title=element_text(size=18),
+        legend.text=element_text(size=16),legend.title=element_text(size=16),
+        legend.spacing.y = unit(0.5, 'cm')) +
+  guides(colour = guide_legend(ncol = 1, byrow=TRUE)) 
+
+ggsave("test3.tiff",width=7000,height=5000,units="px",dpi=600)
+
+
+
+```
 
 
 
